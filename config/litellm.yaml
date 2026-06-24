@@ -1,0 +1,35 @@
+model_list:
+  - model_name: "*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
+
+litellm_settings:
+  # Exact-match Redis cache — re-uses the already-running Redis instance.
+  # Caches identical prompt+model pairs. Semantic cache added later.
+  cache: true
+  cache_params:
+    type: redis
+    host: localhost
+    port: 6379
+    ttl: 3600
+    supported_call_types:
+      - acompletion
+      - completion
+  drop_params: false
+  request_timeout: 600
+  # Pass caller-supplied 'user' field through to SpendLogs.end_user.
+  # Hermes sets this to the profile name in Step 2.
+  store_end_user: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DB_URL
+  disable_spend_logs: false
+  # Allow the proxy to start even if DB is momentarily unavailable.
+  # Spend logs will be written once DB is reachable.
+  allow_requests_on_db_unavailable: true

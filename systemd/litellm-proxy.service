@@ -1,0 +1,24 @@
+[Unit]
+Description=LiteLLM Proxy — OpenRouter gateway with spend tracking
+Documentation=https://docs.litellm.ai
+After=network.target postgresql.service redis-server.service
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=vazir
+Group=vazir
+WorkingDirectory=/home/vazir/.nizam-os
+EnvironmentFile=/home/vazir/.nizam-dotfiles/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/litellm \
+    --config /home/vazir/.nizam-os/config/litellm.yaml \
+    --port 4000 \
+    --num_workers 1
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=litellm-proxy
+
+[Install]
+WantedBy=multi-user.target

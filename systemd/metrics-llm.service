@@ -1,0 +1,7 @@
+[Unit]
+Description=Write LLM spend metrics to Prometheus node-exporter textfile
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/vazir/.nizam-dotfiles/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/.nizam-os/scripts/metrics-llm.py
