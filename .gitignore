@@ -11,8 +11,8 @@ build/
 
 # Secrets — never commit plaintext
 *.env
+*-age-key.txt
 secrets.yaml
-age-key.txt
 *.key
 *.pem
 
