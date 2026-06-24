@@ -6,7 +6,7 @@
   "tags": ["nizam", "agents"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "templating": {
@@ -249,7 +249,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "sum by (model) (rate(nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"}[10m]) * 3600)",
+          "expr": "sum by (model) (rate(nizam_llm_spend_usd_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[10m]) * 3600)",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -277,9 +277,9 @@
       "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "sum(rate(nizam_llm_input_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Input tok/min", "refId": "A" },
-        { "expr": "sum(rate(nizam_llm_output_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Output tok/min", "refId": "B" },
-        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Cache Read tok/min", "refId": "C" }
+        { "expr": "sum(rate(nizam_llm_input_tokens_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Input tok/min", "refId": "A" },
+        { "expr": "sum(rate(nizam_llm_output_tokens_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Output tok/min", "refId": "B" },
+        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Cache Read tok/min", "refId": "C" }
       ],
       "options": {
         "tooltip": { "mode": "multi", "sort": "desc" },
@@ -308,7 +308,7 @@
       "gridPos": { "x": 0, "y": 12, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "sum by (model) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{model}}", "refId": "A" }
+        { "expr": "sum by (model) (nizam_llm_spend_usd_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"})", "legendFormat": "{{model}}", "refId": "A" }
       ],
       "options": {
         "displayMode": "gradient",
@@ -337,13 +337,13 @@
       "gridPos": { "x": 8, "y": 12, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "sum by (provider) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{provider}}", "refId": "A" }
+        { "expr": "sum by (provider) (nizam_llm_spend_usd_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"})", "legendFormat": "{{provider}}", "refId": "A" }
       ],
       "options": {
         "pieType": "pie",
-        "displayLabels": ["value", "percent"],
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["value"] },
-        "tooltip": { "mode": "multi" }
+        "displayLabels": ["percent"],
+        "legend": { "displayMode": "table", "placement": "right", "calcs": [] },
+        "tooltip": { "mode": "single" }
       },
       "fieldConfig": {
         "defaults": {
@@ -363,7 +363,7 @@
       "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "sum by (profile) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{profile}}", "refId": "A" }
+        { "expr": "sum by (profile) (nizam_llm_spend_usd_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"})", "legendFormat": "{{profile}}", "refId": "A" }
       ],
       "options": {
         "displayMode": "gradient",
@@ -392,8 +392,8 @@
       "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "sum(rate(nizam_llm_cache_creation_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Creation tok/min", "refId": "A" },
-        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Read tok/min", "refId": "B" }
+        { "expr": "sum(rate(nizam_llm_cache_creation_tokens_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Creation tok/min", "refId": "A" },
+        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",model!=\"\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Read tok/min", "refId": "B" }
       ],
       "options": {
         "tooltip": { "mode": "multi", "sort": "desc" },
@@ -421,7 +421,7 @@
       "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
-        { "expr": "nizam_llm_avg_latency_ms_1h{model=~\"$model\"}", "legendFormat": "{{model}}", "refId": "A" }
+        { "expr": "nizam_llm_avg_latency_ms_1h{model=~\"$model\",model!=\"\"}", "legendFormat": "{{model}}", "refId": "A" }
       ],
       "options": {
         "tooltip": { "mode": "multi", "sort": "desc" },
@@ -443,7 +443,7 @@
       "id": 14,
       "type": "stat",
       "title": "Spend This Month",
-      "gridPos": { "x": 0, "y": 26, "w": 8, "h": 4 },
+      "gridPos": { "x": 0, "y": 26, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [{ "expr": "nizam_llm_spend_usd_this_month", "legendFormat": "", "refId": "A" }],
       "options": {
@@ -477,7 +477,7 @@
       "id": 15,
       "type": "stat",
       "title": "Cache Savings Today",
-      "gridPos": { "x": 8, "y": 26, "w": 8, "h": 4 },
+      "gridPos": { "x": 6, "y": 26, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [{ "expr": "nizam_llm_cache_savings_usd_today", "legendFormat": "", "refId": "A" }],
       "options": {
@@ -504,7 +504,7 @@
       "id": 16,
       "type": "stat",
       "title": "Total Calls (All Time)",
-      "gridPos": { "x": 16, "y": 26, "w": 8, "h": 4 },
+      "gridPos": { "x": 12, "y": 26, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [{ "expr": "sum(nizam_llm_requests_total)", "legendFormat": "", "refId": "A" }],
       "options": {
@@ -520,6 +520,92 @@
           "color": { "mode": "fixed", "fixedColor": "#37872D" },
           "unit": "short",
           "thresholds": { "mode": "absolute", "steps": [{ "color": "#37872D", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Total Tokens In (All Time)",
+      "gridPos": { "x": 18, "y": 26, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "sum(nizam_llm_input_tokens_total{model!=\"\"})", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#5794F2" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#5794F2", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Total Tokens Out (All Time)",
+      "gridPos": { "x": 0, "y": 30, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "sum(nizam_llm_output_tokens_total{model!=\"\"})", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#B877D9" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#B877D9", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Total Spend (All Time)",
+      "gridPos": { "x": 6, "y": 30, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "sum(nizam_llm_spend_usd_total{model!=\"\"})", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 50 },
+              { "color": "#F2495C", "value": 100 }
+            ]
+          },
           "mappings": []
         },
         "overrides": []
