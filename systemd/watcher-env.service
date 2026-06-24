@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch nizam.env and encrypt on changes
+
+[Service]
+Type=simple
+User=vazir
+ExecStart=/home/vazir/.nizam-os/scripts/watch-env.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
