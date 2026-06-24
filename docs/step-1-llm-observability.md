@@ -58,7 +58,7 @@ File: `~/.nizam-dotfiles/secrets/nizam.env` (plaintext, gitignored, encrypted co
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...         # from openrouter.ai dashboard
 LITELLM_MASTER_KEY=sk-nizam-...         # generate: openssl rand -hex 16, prefix with sk-nizam-
-LITELLM_DB_PASSWORD=...                  # generate: python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+LITELLM_DB_PASSWORD=...                 # generate: python3 -c "import secrets; print(secrets.token_urlsafe(24))"
 LITELLM_DB_URL=postgresql://svc_litellm:<password>@127.0.0.1:5432/nizam?schema=litellm
 REDIS_URL=redis://localhost:6379/0
 ```

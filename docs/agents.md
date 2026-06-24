@@ -22,13 +22,12 @@ Reference for all Hermes profiles. Full SOUL.md content and skill files live in 
 
 ### Bani — admin
 
-System administrator for Nizam-OS itself. Knows the stack top to bottom: systemd units, PostgreSQL schemas, Redis, Prometheus textfile pattern, uv workspace, symlink deployment.
+System administrator for nizam-os itself. Knows the stack top to bottom: systemd units, PostgreSQL schemas, Redis, Prometheus textfile pattern, uv workspace, symlink deployment.
 
 **Responsibilities:**
 - Deploy and update services (git pull → systemctl reload)
 - Debug failures (journal logs, metrics, health checks)
 - Run setup scripts for new steps
-- Create and manage DB schemas, roles, migrations
 - Watch Grafana alerts and self-heal where possible
 - Report anything requiring human decision
 
@@ -49,9 +48,9 @@ Personal assistant. First and most frequently used. Knows your finances, habits,
 - Morning brief and weekly review
 - Context for personal decisions (trade-offs, not just data)
 
-**Access:** `finance-service` (personal schemas), `personal-service`, `knowledge-service` (read + write w/ approval), business headlines (read-only aggregates via Raha).
+**Access:** `finance-service` (personal schemas), `personal-service`, `knowledge-service` (read + write w/ approval), business headlines (read-only aggregates).
 
-**Channel:** `#chat`, `#finances`, `#goals-tasks`, `#learning`
+**Channel:** `#chat`, `#finances`, `#goals-tasks`, `#journal`, `#learning`
 
 ---
 
@@ -264,7 +263,7 @@ You
 
 **Rules:**
 - Alex never talks to C-suite directly — Raha is the gateway
-- C-suite never talks to each other directly — Raha coordinates
+- C-suite can talk to each other directly — Raha consolidates
 - Max delegation depth: 3 hops (You → Alex → Raha → C-suite)
 - Max 4 concurrent sub-agents system-wide
 
@@ -274,15 +273,15 @@ You
 
 | Channel | Profile | Purpose |
 |---|---|---|
-| `#bani` | Bani | System admin, deploy, debug |
-| `#alex` | Alex | Personal — daily driver |
-| `#raha` | Raha | Business — daily driver |
-| `#arwa` | Arwa | Tech decisions, code |
-| `#omar` | Omar | Business finances |
-| `#hala` | Hala | Ops, clients, delivery |
-| `#mira` | Mira | Marketing, content |
+| `#admin` | Bani | System admin, deploy, debug |
+| `#chat` | Alex | Personal — daily driver |
+| `#biz-chat` | Raha | Business — daily driver |
+| `#cto` | Arwa | Tech decisions, code |
+| `#cfo` | Omar | Business finances |
+| `#coo` | Hala | Ops, clients, delivery |
+| `#cmo` | Mira | Marketing, content |
 | `#alerts` | System | Grafana + service alerts |
-| `#debug` | System | Traces, raw tool output |
+| `#logs` | System | Traces, raw tool output |
 
 ---
 

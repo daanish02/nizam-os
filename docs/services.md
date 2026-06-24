@@ -1,4 +1,4 @@
-# Services — Nizam-OS
+# Services — nizam-os
 
 Reference for all MCP services. Each service is a `uv` workspace member under `services/`. Full schemas in `migrations/`. Tool implementations in `services/<name>/`.
 
