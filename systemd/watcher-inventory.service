@@ -1,0 +1,7 @@
+[Unit]
+Description=Generate services and software inventory
+
+[Service]
+Type=oneshot
+User=vazir
+ExecStart=/home/vazir/.nizam-os/scripts/watch-inventory.sh

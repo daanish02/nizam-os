@@ -1,0 +1,16 @@
+cron.service | system | active
+fail2ban.service | system | active
+grafana-server.service | system | active
+litellm-proxy.service | system | active
+metrics-llm.service | system | failed
+metrics-llm.timer | system | active
+postgresql.service | system | active
+prometheus-node-exporter.service | system | active
+prometheus.service | system | active
+redis-server.service | system | active
+ssh.socket | system | active
+tailscaled.service | system | active
+ufw.service | system | active
+unattended-upgrades.service | system | active
+watcher-env.service | system | active
+watcher-inventory.timer | system | active
