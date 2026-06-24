@@ -1,0 +1,530 @@
+{
+  "id": null,
+  "uid": "nizam-agents",
+  "title": "Nizam — Agents",
+  "description": "LLM usage, cost, cache, and latency across all Nizam agents",
+  "tags": ["nizam", "agents"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(nizam_llm_requests_total, model)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Model",
+        "multi": true,
+        "name": "model",
+        "options": [],
+        "query": {
+          "query": "label_values(nizam_llm_requests_total, model)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(nizam_llm_requests_total, profile)",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Agent",
+        "multi": true,
+        "name": "profile",
+        "options": [],
+        "query": {
+          "query": "label_values(nizam_llm_requests_total, profile)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Proxy Status",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_proxy_up", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "#F2495C", "index": 0 }, "1": { "text": "UP", "color": "#00D4A3", "index": 1 } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#F2495C", "value": null }, { "color": "#00D4A3", "value": 1 }] },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Calls Today",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_requests_today", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#FADE2A" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#FADE2A", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tokens In Today",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_input_tokens_today", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#5794F2" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#5794F2", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tokens Out Today",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_output_tokens_today", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#B877D9" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#B877D9", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Spend Today",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_spend_usd_today", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 2 },
+              { "color": "#F2495C", "value": 5 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Cache Hit Rate",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_cache_hit_rate_today * 100", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#F2495C", "value": null },
+              { "color": "#FF9830", "value": 20 },
+              { "color": "#73BF69", "value": 40 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Cost Rate — by Model",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"}[10m]) * 3600)",
+          "legendFormat": "{{model}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "spanNulls": false },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Token Rate — In / Out / Cache Read",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum(rate(nizam_llm_input_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Input tok/min", "refId": "A" },
+        { "expr": "sum(rate(nizam_llm_output_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Output tok/min", "refId": "B" },
+        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Cache Read tok/min", "refId": "C" }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "spanNulls": false },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Input tok/min" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#5794F2" } }] },
+          { "matcher": { "id": "byName", "options": "Output tok/min" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#B877D9" } }] },
+          { "matcher": { "id": "byName", "options": "Cache Read tok/min" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#00D4A3" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 9,
+      "type": "bargauge",
+      "title": "Spend by Model (All Time)",
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum by (model) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{model}}", "refId": "A" }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 10,
+      "type": "piechart",
+      "title": "Spend by Provider (All Time)",
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum by (provider) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{provider}}", "refId": "A" }
+      ],
+      "options": {
+        "pieType": "pie",
+        "displayLabels": ["value", "percent"],
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["value"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Spend by Agent (All Time)",
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum by (profile) (nizam_llm_spend_usd_total{model=~\"$model\",profile=~\"$profile\"})", "legendFormat": "{{profile}}", "refId": "A" }
+      ],
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Cache Tokens — Creation vs Read",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "sum(rate(nizam_llm_cache_creation_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Creation tok/min", "refId": "A" },
+        { "expr": "sum(rate(nizam_llm_cache_read_tokens_total{model=~\"$model\",profile=~\"$profile\"}[5m]) * 60)", "legendFormat": "Read tok/min", "refId": "B" }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never", "spanNulls": false },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Creation tok/min" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } }] },
+          { "matcher": { "id": "byName", "options": "Read tok/min" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#00D4A3" } }] }
+        ]
+      }
+    },
+
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Avg Response Latency — by Model (1h rolling)",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "nizam_llm_avg_latency_ms_1h{model=~\"$model\"}", "legendFormat": "{{model}}", "refId": "A" }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "ms",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": false },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Spend This Month",
+      "gridPos": { "x": 0, "y": 26, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_spend_usd_this_month", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#73BF69", "value": null },
+              { "color": "#FF9830", "value": 60 },
+              { "color": "#F2495C", "value": 90 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Cache Savings Today",
+      "gridPos": { "x": 8, "y": 26, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "nizam_llm_cache_savings_usd_today", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#00D4A3" },
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#00D4A3", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Total Calls (All Time)",
+      "gridPos": { "x": 16, "y": 26, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "expr": "sum(nizam_llm_requests_total)", "legendFormat": "", "refId": "A" }],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#37872D" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#37872D", "value": null }] },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    }
+
+  ]
+}
