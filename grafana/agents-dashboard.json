@@ -8,7 +8,7 @@
   "schemaVersion": 38,
   "version": 2,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": { "from": "now-1y", "to": "now" },
   "templating": {
     "list": [
       {
@@ -573,6 +573,62 @@
           "unit": "short",
           "thresholds": { "mode": "absolute", "steps": [{ "color": "#B877D9", "value": null }] },
           "mappings": []
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 20,
+      "type": "heatmap",
+      "title": "Token Spend — Activity Heatmap",
+      "gridPos": { "x": 0, "y": 34, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "(sum(rate(nizam_llm_input_tokens_total{model!=\"\",profile=~\"$profile\"}[5m])) + sum(rate(nizam_llm_output_tokens_total{model!=\"\",profile=~\"$profile\"}[5m]))) * 60",
+          "legendFormat": "tok/min",
+          "refId": "A",
+          "interval": "5m",
+          "format": "time_series"
+        }
+      ],
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "xBuckets": { "mode": "size", "value": "1d" },
+          "yBuckets": { "mode": "count", "value": "8" }
+        },
+        "cellGap": 1,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Reds",
+          "reverse": true,
+          "min": 0,
+          "exponent": 0.5,
+          "scale": "exponential",
+          "steps": 128
+        },
+        "exemplars": { "color": "rgba(255,0,255,0.7)" },
+        "filterValues": { "le": 1e-9 },
+        "legend": { "show": true },
+        "rowsFrame": { "layout": "auto" },
+        "tooltip": { "mode": "single", "showColorScale": true, "yHistogram": true },
+        "yAxis": {
+          "axisPlacement": "left",
+          "decimals": 0,
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "scaleDistribution": { "type": "linear" }
+          },
+          "unit": "short"
         },
         "overrides": []
       }
