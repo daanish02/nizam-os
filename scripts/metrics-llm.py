@@ -1,15 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["psycopg2-binary", "requests", "redis"]
+# dependencies = ["requests", "redis"]
 # ///
 """
 LLM metrics textfile writer for Prometheus node-exporter.
-Runs every 60s via systemd timer. Queries LiteLLM's PostgreSQL spend logs
+Runs every 60s via systemd timer. Queries LiteLLM's /spend/logs API
 and writes /var/lib/prometheus/node-exporter/nizam-llm.prom.
 
 Metrics written:
-  Counters (cumulative from DB, monotonically increasing):
+  Counters (cumulative, monotonically increasing):
     nizam_llm_requests_total{model,provider,profile}
     nizam_llm_input_tokens_total{model,provider,profile}
     nizam_llm_output_tokens_total{model,provider,profile}
@@ -17,7 +17,7 @@ Metrics written:
     nizam_llm_cache_creation_tokens_total{model,profile}
     nizam_llm_spend_usd_total{model,provider,profile}
 
-  Gauges (pre-aggregated for stat panels — no Prometheus math needed):
+  Gauges (pre-aggregated for stat panels):
     nizam_llm_requests_today
     nizam_llm_input_tokens_today
     nizam_llm_output_tokens_today
@@ -33,23 +33,20 @@ Metrics written:
 
 import json
 import os
-import re
+from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
-import psycopg2
 import redis
 import requests
 
 OUT = Path("/var/lib/prometheus/node-exporter/nizam-llm.prom")
 TMP = OUT.with_suffix(".prom.tmp")
 
-_raw_db_url = os.environ.get("LITELLM_DB_URL", "")
-# psycopg2 doesn't understand ?schema=... (that's Prisma/SQLAlchemy).
-# Queries already fully-qualify tables as litellm."Table", so stripping is safe.
-DB_URL = re.sub(r"[?&]schema=[^&]*", "", _raw_db_url).rstrip("?")
+LITELLM_URL = "http://localhost:4000"
+LITELLM_KEY = os.environ.get("LITELLM_MASTER_KEY", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-LITELLM_URL = "http://localhost:4000"
 
 REDIS_PRICE_KEY = "nizam:openrouter:model_prices"
 REDIS_PRICE_TTL = 86400  # 24h
@@ -64,26 +61,7 @@ def get_redis() -> redis.Redis | None:
         return None
 
 
-def get_model_prices(r: redis.Redis | None) -> dict[str, dict[str, float | None]]:
-    """
-    Fetch per-model pricing from OpenRouter's /api/v1/models endpoint.
-    Cached in Redis for 24h (TTL set by Redis, not by us).
-
-    Returns:
-      {
-        "anthropic/claude-sonnet-4-6": {
-          "prompt": 0.000003,       # USD per input token
-          "completion": 0.000015,   # USD per output token
-          "cache_read": 0.0000003,  # USD per cache-read token, or None
-          "cache_creation": None,   # USD per cache-creation token, or None
-        },
-        ...
-      }
-
-    Provider-specific cache pricing comes directly from OpenRouter — no
-    hardcoded fractions. If a model has no cache pricing in the API response,
-    cache_read and cache_creation are None and savings are not estimated for it.
-    """
+def get_model_prices(r: redis.Redis | None) -> dict:
     if r is not None:
         cached = r.get(REDIS_PRICE_KEY)
         if cached:
@@ -103,7 +81,7 @@ def get_model_prices(r: redis.Redis | None) -> dict[str, dict[str, float | None]
         )
         resp.raise_for_status()
 
-        prices: dict[str, dict[str, float | None]] = {}
+        prices: dict = {}
         for model in resp.json().get("data", []):
             model_id = model.get("id", "")
             if not model_id:
@@ -152,13 +130,21 @@ def check_proxy_up() -> int:
 
 
 def clean_model(raw: str) -> str:
-    """Strip openrouter/ prefix added by LiteLLM routing."""
     return raw.removeprefix("openrouter/")
 
 
 def provider_from_model(model: str) -> str:
     parts = model.split("/")
     return parts[0] if len(parts) >= 2 else "unknown"
+
+
+def parse_time(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.rstrip("Z")).replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
 
 def write_fallback(proxy_up: int) -> None:
@@ -171,20 +157,34 @@ def write_fallback(proxy_up: int) -> None:
     TMP.replace(OUT)
 
 
+def fetch_logs() -> list | None:
+    if not LITELLM_KEY:
+        return None
+    try:
+        resp = requests.get(
+            f"{LITELLM_URL}/spend/logs",
+            params={"limit": 10000},
+            headers={"Authorization": f"Bearer {LITELLM_KEY}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return None
+
+
 def main() -> None:
     proxy_up = check_proxy_up()
 
-    if not DB_URL:
+    logs = fetch_logs()
+    if not logs:
         write_fallback(proxy_up)
         return
 
-    try:
-        conn = psycopg2.connect(DB_URL, connect_timeout=5)
-        conn.set_session(readonly=True, autocommit=True)
-        cur = conn.cursor()
-    except Exception:
-        write_fallback(proxy_up)
-        return
+    now = datetime.now(timezone.utc)
+    today_date = now.date()
+    month_start = today_date.replace(day=1)
+    one_hour_ago = now.timestamp() - 3600
 
     r = get_redis()
     lines: list[str] = []
@@ -193,216 +193,144 @@ def main() -> None:
         lines.append(f"# HELP {name} {help_text}")
         lines.append(f"# TYPE {name} {metric_type}")
 
-    # ── Proxy status ─────────────────────────────────────────────────────────
+    # ── Accumulate per-series totals ──────────────────────────────────────────
+    totals: dict = defaultdict(lambda: {
+        "requests": 0, "input_tokens": 0, "output_tokens": 0,
+        "spend": 0.0, "cache_read": 0, "cache_create": 0,
+    })
+
+    today_req = today_in = today_out = 0
+    today_spend = 0.0
+    today_cache_hits = 0
+    month_spend = 0.0
+    latency_by_model: dict = defaultdict(list)
+    today_cache_read_by_model: dict = defaultdict(int)
+
+    for log in logs:
+        model = log.get("model", "") or ""
+        profile = log.get("user", "") or "unknown"
+        spend = float(log.get("spend") or 0)
+        in_tok = int(log.get("prompt_tokens") or 0)
+        out_tok = int(log.get("completion_tokens") or 0)
+
+        # Cache tokens: try metadata.usage_object (OpenAI format) then response.usage (Anthropic)
+        meta = log.get("metadata") or {}
+        usage_obj = meta.get("usage_object") or {}
+        ptd = usage_obj.get("prompt_tokens_details") or {}
+        cache_read = int(ptd.get("cached_tokens") or 0)
+        cache_create = int(ptd.get("cache_write_tokens") or 0)
+
+        key = (model, profile)
+        totals[key]["requests"] += 1
+        totals[key]["input_tokens"] += in_tok
+        totals[key]["output_tokens"] += out_tok
+        totals[key]["spend"] += spend
+        totals[key]["cache_read"] += cache_read
+        totals[key]["cache_create"] += cache_create
+
+        start_ts = parse_time(log.get("startTime"))
+        end_ts = parse_time(log.get("endTime"))
+
+        if start_ts:
+            start_date = start_ts.date()
+
+            if start_date == today_date:
+                today_req += 1
+                today_in += in_tok
+                today_out += out_tok
+                today_spend += spend
+                if cache_read > 0:
+                    today_cache_hits += 1
+                today_cache_read_by_model[model] += cache_read
+
+            if start_date >= month_start:
+                month_spend += spend
+
+            if start_ts.timestamp() >= one_hour_ago:
+                dur = log.get("request_duration_ms")
+                if dur is None and end_ts:
+                    dur = (end_ts.timestamp() - start_ts.timestamp()) * 1000
+                if dur is not None:
+                    latency_by_model[clean_model(model)].append(float(dur))
+
+    # ── Proxy status ──────────────────────────────────────────────────────────
     section("LiteLLM proxy reachable (1=yes, 0=no)", "gauge", "nizam_llm_proxy_up")
     lines.append(f"nizam_llm_proxy_up {proxy_up}")
 
-    # ── Cumulative counters by model / provider / profile ────────────────────
-    try:
-        cur.execute(
-            """
-            SELECT
-                model,
-                COALESCE(NULLIF(end_user, ''), 'unknown') AS profile,
-                COUNT(*)                                   AS requests,
-                SUM(COALESCE(prompt_tokens, 0))            AS input_tokens,
-                SUM(COALESCE(completion_tokens, 0))        AS output_tokens,
-                SUM(COALESCE(spend, 0.0))                  AS spend_usd,
-                SUM(CASE WHEN cache_hit = 'True' THEN 1 ELSE 0 END) AS cache_hits
-            FROM litellm."LiteLLM_SpendLogs"
-            GROUP BY model, profile
-            """
-        )
-        rows = cur.fetchall()
-    except psycopg2.errors.UndefinedTable:
-        # LiteLLM hasn't run its Prisma migration yet.
-        write_fallback(proxy_up)
-        conn.close()
-        return
-    except Exception:
-        write_fallback(proxy_up)
-        conn.close()
-        return
-
+    # ── Cumulative counters ───────────────────────────────────────────────────
     section("Cumulative LLM request count", "counter", "nizam_llm_requests_total")
-    for m, profile, reqs, *_ in rows:
-        m = clean_model(m)
-        lines.append(f"nizam_llm_requests_total{label(model=m, provider=provider_from_model(m), profile=profile)} {reqs}")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_requests_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['requests']}")
 
     section("Cumulative input tokens", "counter", "nizam_llm_input_tokens_total")
-    for m, profile, _, in_tok, *_ in rows:
-        m = clean_model(m)
-        lines.append(f"nizam_llm_input_tokens_total{label(model=m, provider=provider_from_model(m), profile=profile)} {in_tok}")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_input_tokens_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['input_tokens']}")
 
     section("Cumulative output tokens", "counter", "nizam_llm_output_tokens_total")
-    for m, profile, _, _, out_tok, *_ in rows:
-        m = clean_model(m)
-        lines.append(f"nizam_llm_output_tokens_total{label(model=m, provider=provider_from_model(m), profile=profile)} {out_tok}")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_output_tokens_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['output_tokens']}")
 
     section("Cumulative LLM spend USD", "counter", "nizam_llm_spend_usd_total")
-    for m, profile, _, _, _, spend, _ in rows:
-        m = clean_model(m)
-        lines.append(f"nizam_llm_spend_usd_total{label(model=m, provider=provider_from_model(m), profile=profile)} {spend:.8f}")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_spend_usd_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['spend']:.8f}")
 
-    # ── Cache token counters ──────────────────────────────────────────────────
-    # Extracted from the response JSON stored by LiteLLM.
-    # Tries multiple field paths to cover different provider formats:
-    #   - cache_read_input_tokens       (Anthropic via LiteLLM normalisation)
-    #   - prompt_tokens_details.cached_tokens  (OpenAI)
-    # Both are provider-reported values — no assumptions about discount rates here.
-    try:
-        cur.execute(
-            """
-            SELECT
-                model,
-                COALESCE(NULLIF(end_user, ''), 'unknown') AS profile,
-                SUM(COALESCE(
-                    NULLIF((response::jsonb -> 'usage' ->> 'cache_read_input_tokens'), '')::int,
-                    NULLIF((response::jsonb -> 'usage' -> 'prompt_tokens_details'
-                             ->> 'cached_tokens'), '')::int,
-                    0
-                )) AS cache_read,
-                SUM(COALESCE(
-                    NULLIF((response::jsonb -> 'usage' ->> 'cache_creation_input_tokens'), '')::int,
-                    0
-                )) AS cache_create
-            FROM litellm."LiteLLM_SpendLogs"
-            WHERE response IS NOT NULL
-            GROUP BY model, profile
-            """
-        )
-        cache_rows = cur.fetchall()
+    section("Cumulative cache read tokens", "counter", "nizam_llm_cache_read_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_cache_read_tokens_total{label(model=mc, profile=profile)} {v['cache_read']}")
 
-        section("Cumulative cache read tokens (all providers)", "counter", "nizam_llm_cache_read_tokens_total")
-        for m, profile, cache_read, _ in cache_rows:
-            m = clean_model(m)
-            lines.append(f"nizam_llm_cache_read_tokens_total{label(model=m, profile=profile)} {cache_read}")
-
-        section("Cumulative cache creation tokens (all providers)", "counter", "nizam_llm_cache_creation_tokens_total")
-        for m, profile, _, cache_create in cache_rows:
-            m = clean_model(m)
-            lines.append(f"nizam_llm_cache_creation_tokens_total{label(model=m, profile=profile)} {cache_create}")
-
-    except Exception:
-        pass
+    section("Cumulative cache creation tokens", "counter", "nizam_llm_cache_creation_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_cache_creation_tokens_total{label(model=mc, profile=profile)} {v['cache_create']}")
 
     # ── Today's gauges ────────────────────────────────────────────────────────
-    try:
-        cur.execute(
-            """
-            SELECT
-                COUNT(*)                                                    AS requests,
-                SUM(COALESCE(prompt_tokens, 0))                             AS input_tokens,
-                SUM(COALESCE(completion_tokens, 0))                         AS output_tokens,
-                SUM(COALESCE(spend, 0.0))                                   AS spend_usd,
-                SUM(CASE WHEN cache_hit = 'True' THEN 1 ELSE 0 END)::float
-                    / NULLIF(COUNT(*), 0)                                   AS cache_hit_rate
-            FROM litellm."LiteLLM_SpendLogs"
-            WHERE "startTime" >= CURRENT_DATE
-            """
-        )
-        today = cur.fetchone()
-        if today:
-            req_t, in_t, out_t, spend_t, chr_t = today
-            section("LLM requests today", "gauge", "nizam_llm_requests_today")
-            lines.append(f"nizam_llm_requests_today {int(req_t or 0)}")
-            section("Input tokens today", "gauge", "nizam_llm_input_tokens_today")
-            lines.append(f"nizam_llm_input_tokens_today {int(in_t or 0)}")
-            section("Output tokens today", "gauge", "nizam_llm_output_tokens_today")
-            lines.append(f"nizam_llm_output_tokens_today {int(out_t or 0)}")
-            section("LLM spend USD today", "gauge", "nizam_llm_spend_usd_today")
-            lines.append(f"nizam_llm_spend_usd_today {float(spend_t or 0):.6f}")
-            section("Cache hit rate today (0.0–1.0)", "gauge", "nizam_llm_cache_hit_rate_today")
-            lines.append(f"nizam_llm_cache_hit_rate_today {float(chr_t or 0):.4f}")
-    except Exception:
-        pass
+    section("LLM requests today", "gauge", "nizam_llm_requests_today")
+    lines.append(f"nizam_llm_requests_today {today_req}")
 
-    # ── This month's spend ────────────────────────────────────────────────────
-    try:
-        cur.execute(
-            """
-            SELECT SUM(COALESCE(spend, 0.0))
-            FROM litellm."LiteLLM_SpendLogs"
-            WHERE DATE_TRUNC('month', "startTime") = DATE_TRUNC('month', NOW())
-            """
-        )
-        row = cur.fetchone()
-        section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
-        lines.append(f"nizam_llm_spend_usd_this_month {float(row[0] or 0) if row else 0:.6f}")
-    except Exception:
-        pass
+    section("Input tokens today", "gauge", "nizam_llm_input_tokens_today")
+    lines.append(f"nizam_llm_input_tokens_today {today_in}")
+
+    section("Output tokens today", "gauge", "nizam_llm_output_tokens_today")
+    lines.append(f"nizam_llm_output_tokens_today {today_out}")
+
+    section("LLM spend USD today", "gauge", "nizam_llm_spend_usd_today")
+    lines.append(f"nizam_llm_spend_usd_today {today_spend:.6f}")
+
+    section("Cache hit rate today (0.0–1.0)", "gauge", "nizam_llm_cache_hit_rate_today")
+    chr_val = (today_cache_hits / today_req) if today_req > 0 else 0.0
+    lines.append(f"nizam_llm_cache_hit_rate_today {chr_val:.4f}")
+
+    # ── Month spend ───────────────────────────────────────────────────────────
+    section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
+    lines.append(f"nizam_llm_spend_usd_this_month {month_spend:.6f}")
 
     # ── Cache savings (today) ─────────────────────────────────────────────────
-    # savings per model = cache_read_tokens × (prompt_price - cache_read_price)
-    # Both prices come from OpenRouter's /api/v1/models response, cached 24h in Redis.
-    # No hardcoded fractions — if a model has no cache_read price in the API, it's skipped.
-    try:
-        cur.execute(
-            """
-            SELECT
-                model,
-                SUM(COALESCE(
-                    NULLIF((response::jsonb -> 'usage' ->> 'cache_read_input_tokens'), '')::int,
-                    NULLIF((response::jsonb -> 'usage' -> 'prompt_tokens_details'
-                             ->> 'cached_tokens'), '')::int,
-                    0
-                )) AS cache_read
-            FROM litellm."LiteLLM_SpendLogs"
-            WHERE "startTime" >= CURRENT_DATE AND response IS NOT NULL
-            GROUP BY model
-            """
-        )
-        savings_rows = cur.fetchall() or []
-        if savings_rows:
-            model_prices = get_model_prices(r)
-            savings = 0.0
-            for m, cache_read in savings_rows:
-                m_clean = clean_model(m)
-                pricing = model_prices.get(m_clean) or model_prices.get(m)
-                if not pricing:
-                    continue
-                prompt_price = pricing.get("prompt")
-                cache_read_price = pricing.get("cache_read")
-                # Only compute if the API returned both prices for this model
-                if prompt_price is None or cache_read_price is None:
-                    continue
-                savings += int(cache_read or 0) * (prompt_price - cache_read_price)
-            section(
-                "Estimated USD saved via provider prompt cache today",
-                "gauge",
-                "nizam_llm_cache_savings_usd_today",
-            )
-            lines.append(f"nizam_llm_cache_savings_usd_today {savings:.6f}")
-    except Exception:
-        pass
+    if today_cache_read_by_model:
+        model_prices = get_model_prices(r)
+        savings = 0.0
+        for m, cr in today_cache_read_by_model.items():
+            mc = clean_model(m)
+            pricing = model_prices.get(mc) or model_prices.get(m)
+            if not pricing:
+                continue
+            prompt_price = pricing.get("prompt")
+            cache_read_price = pricing.get("cache_read")
+            if prompt_price is not None and cache_read_price is not None:
+                savings += cr * (prompt_price - cache_read_price)
+        section("Estimated USD saved via provider prompt cache today", "gauge", "nizam_llm_cache_savings_usd_today")
+        lines.append(f"nizam_llm_cache_savings_usd_today {savings:.6f}")
 
     # ── Avg latency by model (last 1h) ────────────────────────────────────────
-    try:
-        cur.execute(
-            """
-            SELECT
-                model,
-                AVG(EXTRACT(EPOCH FROM ("endTime" - "startTime")) * 1000) AS avg_ms
-            FROM litellm."LiteLLM_SpendLogs"
-            WHERE "startTime" > NOW() - INTERVAL '1 hour'
-              AND "endTime" IS NOT NULL
-            GROUP BY model
-            """
-        )
-        latency_rows = cur.fetchall()
-        if latency_rows:
-            section(
-                "Average LLM response latency ms over last 1h by model",
-                "gauge",
-                "nizam_llm_avg_latency_ms_1h",
-            )
-            for m, avg_ms in latency_rows:
-                m = clean_model(m)
-                lines.append(f'nizam_llm_avg_latency_ms_1h{{model="{m}"}} {float(avg_ms or 0):.1f}')
-    except Exception:
-        pass
-
-    conn.close()
+    if latency_by_model:
+        section("Average LLM response latency ms over last 1h by model", "gauge", "nizam_llm_avg_latency_ms_1h")
+        for m, durations in latency_by_model.items():
+            avg_ms = sum(durations) / len(durations)
+            lines.append(f'nizam_llm_avg_latency_ms_1h{{model="{m}"}} {avg_ms:.1f}')
 
     TMP.write_text("\n".join(lines) + "\n")
     TMP.replace(OUT)
