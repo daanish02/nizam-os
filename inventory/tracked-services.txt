@@ -17,3 +17,6 @@ watcher-inventory.timer
 litellm-proxy.service
 metrics-llm.service
 metrics-llm.timer
+
+# Nizam-OS — Hermes Gateway (user service: systemctl --user)
+hermes-gateway.service

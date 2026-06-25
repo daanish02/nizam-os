@@ -1,6 +1,7 @@
 cron.service | system | active
 fail2ban.service | system | active
 grafana-server.service | system | active
+hermes-gateway.service | user | active
 litellm-proxy.service | system | activating
 metrics-llm.service | system | failed
 metrics-llm.timer | system | active
