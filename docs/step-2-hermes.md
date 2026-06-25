@@ -65,7 +65,7 @@ model:
   default: deepseek/deepseek-v4-flash
   provider: openrouter
   base_url: http://localhost:4000   # was https://openrouter.ai/api/v1
-  api_mode: chat_completions
+  api_mode: chat/completions
 ```
 
 **`~/.hermes/.env`** — replace OpenRouter key with LiteLLM master key:
