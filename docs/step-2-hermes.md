@@ -59,7 +59,7 @@ discord.errors.PrivilegedIntentsRequired
 
 Hermes must send calls through the local LiteLLM proxy (port 4000) for observability.
 
-**`~/.hermes/config.yaml`** — change base_url:
+**`~/.hermes/profiles/<profile-name>/config.yaml`** — change base_url:
 ```yaml
 model:
   default: deepseek/deepseek-v4-flash
@@ -68,7 +68,7 @@ model:
   api_mode: chat/completions
 ```
 
-**`~/.hermes/.env`** — replace OpenRouter key with LiteLLM master key:
+**`~/.hermes/profiles/<profile-name>/.env`** — replace OpenRouter key with LiteLLM master key:
 ```bash
 # Hermes sends this as Bearer auth to LiteLLM proxy.
 # Real OpenRouter key lives in ~/.nizam-os/secrets/nizam.env, used by litellm-proxy.service.
