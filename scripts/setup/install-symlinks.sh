@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Wire all nizam-os files into system locations via symlinks.
 # Run once (or re-run safely — ln -sf overwrites stale links):
-#   sudo bash scripts/install-symlinks.sh
+#   sudo bash scripts/setup/install-symlinks.sh
 set -euo pipefail
 
 NIZAM_OS=/home/vazir/.nizam-os
+USER_HOME=/home/vazir
 
-# ── Systemd units ─────────────────────────────────────────────────────────────
+# ── Systemd system units (require sudo) ───────────────────────────────────────
 ln -sf "$NIZAM_OS/systemd/litellm-proxy.service"      /etc/systemd/system/litellm-proxy.service
 ln -sf "$NIZAM_OS/systemd/metrics-llm.service"        /etc/systemd/system/metrics-llm.service
 ln -sf "$NIZAM_OS/systemd/metrics-llm.timer"          /etc/systemd/system/metrics-llm.timer
@@ -15,13 +16,18 @@ ln -sf "$NIZAM_OS/systemd/watcher-inventory.timer"    /etc/systemd/system/watche
 ln -sf "$NIZAM_OS/systemd/watcher-env.service"        /etc/systemd/system/watcher-env.service
 
 systemctl daemon-reload
+echo "  reloaded system daemon"
+
+# ── Systemd user units (no sudo needed for symlink; daemon-reload run as user) ─
+USER_SYSTEMD="$USER_HOME/.config/systemd/user"
+mkdir -p "$USER_SYSTEMD"
+ln -sf "$NIZAM_OS/systemd/user/hermes-profile-watcher.service" "$USER_SYSTEMD/hermes-profile-watcher.service"
+echo "  linked user service: hermes-profile-watcher.service"
+echo "  NOTE: run as vazir → systemctl --user daemon-reload && systemctl --user enable --now hermes-profile-watcher"
 
 # ── Hermes profile files ──────────────────────────────────────────────────────
-# Hermes is a user service. Each profile in nizam-os/hermes/profiles/<name>/
-# maps 1:1 to ~/.hermes/profiles/<name>/.
-# Tracked per profile: .env, config.yaml, *.md (root only), skills/, memories/
-# .env is gitignored (secrets) but symlinked so Hermes writes to nizam-os path.
-USER_HOME=/home/vazir
+# Each profile in nizam-os/hermes/profiles/<name>/ maps 1:1 to ~/.hermes/profiles/<name>/.
+# Tracked: .env, config.yaml, *.md (root only), skills/, memories/
 HERMES_PROFILES="$USER_HOME/.hermes/profiles"
 
 # Wire ~/.hermes/SOUL.md to admin — gateway uses root SOUL.md, not profile SOUL.md

@@ -1,0 +1,14 @@
+[Unit]
+Description=Nizam-OS Hermes Profile File Watcher
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/vazir/.nizam-os/scripts/watch-hermes-profiles.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
