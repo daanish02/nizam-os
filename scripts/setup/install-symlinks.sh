@@ -16,26 +16,57 @@ ln -sf "$NIZAM_OS/systemd/watcher-env.service"        /etc/systemd/system/watche
 
 systemctl daemon-reload
 
-# ── Hermes SOUL.md files ──────────────────────────────────────────────────────
-# Hermes gateway is a user service installed by 'hermes gateway install'.
-# The gateway uses ~/.hermes/SOUL.md (root profile) regardless of active_profile.
-# admin/SOUL.md is the default agent — symlinked at root so gateway picks it up.
+# ── Hermes profile files ──────────────────────────────────────────────────────
+# Hermes is a user service. Each profile in nizam-os/hermes/profiles/<name>/
+# maps 1:1 to ~/.hermes/profiles/<name>/.
+# Tracked per profile: .env, config.yaml, *.md (root only), skills/, memories/
+# .env is gitignored (secrets) but symlinked so Hermes writes to nizam-os path.
 USER_HOME=/home/vazir
-ln -sf "$NIZAM_OS/hermes/profiles/admin/SOUL.md" "$USER_HOME/.hermes/SOUL.md"
-echo "  linked ~/.hermes/SOUL.md → admin/SOUL.md"
+HERMES_PROFILES="$USER_HOME/.hermes/profiles"
 
-# Named profile SOUL.md files (for hermes -p <name> CLI usage)
+# Wire ~/.hermes/SOUL.md to admin — gateway uses root SOUL.md, not profile SOUL.md
+ln -sf "$NIZAM_OS/hermes/profiles/admin/SOUL.md" "$USER_HOME/.hermes/SOUL.md"
+echo "  linked ~/.hermes/SOUL.md → admin/SOUL.md (gateway default)"
+
 for profile_dir in "$NIZAM_OS/hermes/profiles"/*/; do
     name=$(basename "$profile_dir")
-    src="$profile_dir/SOUL.md"
-    dst="$USER_HOME/.hermes/profiles/$name/SOUL.md"
-    if [ ! -f "$src" ]; then continue; fi
-    if [ ! -d "$USER_HOME/.hermes/profiles/$name" ]; then
-        echo "  Profile $name missing — create with: hermes profile create $name"
+    dst_base="$HERMES_PROFILES/$name"
+
+    if [ ! -d "$dst_base" ]; then
+        echo "  Profile $name not in ~/.hermes/profiles/ — create with: hermes profile create $name"
         continue
     fi
-    ln -sf "$src" "$dst"
-    echo "  linked hermes/$name/SOUL.md"
+
+    # .md files in profile root
+    for md in "$profile_dir"*.md; do
+        [ -f "$md" ] || continue
+        ln -sf "$md" "$dst_base/$(basename "$md")"
+    done
+
+    # config.yaml
+    if [ -f "$profile_dir/config.yaml" ]; then
+        ln -sf "$profile_dir/config.yaml" "$dst_base/config.yaml"
+    fi
+
+    # .env (gitignored — secrets, but symlinked so Hermes writes to nizam-os)
+    if [ -f "$profile_dir/.env" ]; then
+        ln -sf "$profile_dir/.env" "$dst_base/.env"
+    fi
+
+    # skills/ and memories/ as directory symlinks
+    # Any new file Hermes writes inside lands directly in nizam-os (git tracks it)
+    for dir in skills memories; do
+        src="$profile_dir/$dir"
+        dst="$dst_base/$dir"
+        if [ -d "$src" ] && [ ! -L "$dst" ]; then
+            rm -rf "$dst"
+            ln -sf "$src" "$dst"
+        elif [ -d "$src" ]; then
+            ln -sf "$src" "$dst"
+        fi
+    done
+
+    echo "  linked hermes profile: $name"
 done
 
 echo ""
