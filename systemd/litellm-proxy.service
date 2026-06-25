@@ -9,7 +9,7 @@ Type=simple
 User=vazir
 Group=vazir
 WorkingDirectory=/home/vazir/.nizam-os
-EnvironmentFile=/home/vazir/.nizam-dotfiles/secrets/nizam.env
+EnvironmentFile=/home/vazir/.nizam-os/secrets/nizam.env
 ExecStart=/home/vazir/.local/bin/litellm \
     --config /home/vazir/.nizam-os/config/litellm.yaml \
     --port 4000 \

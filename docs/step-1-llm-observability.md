@@ -15,7 +15,7 @@ systemctl is-active postgresql redis-server prometheus prometheus-node-exporter 
 
 Also required:
 - `uv` installed (`which uv`)
-- `~/.nizam-dotfiles/` repo present (secrets, grafana, systemd patterns live there)
+- `~/.nizam-dotfiles/` repo present (machine config — shell, security monitoring)
 - OpenRouter API key (from openrouter.ai)
 - Bitwarden (to store generated secrets)
 
@@ -53,7 +53,7 @@ Key decisions:
 
 ## 3. Secrets
 
-File: `~/.nizam-dotfiles/secrets/nizam.env` (plaintext, gitignored, encrypted copy tracked as `nizam.env.enc`)
+File: `~/.nizam-os/secrets/nizam.env` (plaintext, gitignored, encrypted copy tracked as `nizam.env.enc`)
 
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...         # from openrouter.ai dashboard
@@ -229,7 +229,7 @@ curl -s "http://localhost:9090/api/v1/label/model/values" | python3 -m json.tool
 
 ## Inventory
 
-New entries added to `~/.nizam-dotfiles/inventory/tracked-services.txt`:
+New entries added to `~/.nizam-os/inventory/tracked-services.txt`:
 ```
 # Nizam-OS — LLM Gateway
 litellm-proxy.service
