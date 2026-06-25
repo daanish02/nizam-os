@@ -1,25 +1,16 @@
 === SOFTWARE CHANGES ===
---- /home/vazir/.nizam-os/inventory/software.txt	2026-06-25 07:00:04.676132456 +0000
-+++ /tmp/tmp.nYcTIC3NTl	2026-06-25 08:00:06.126715369 +0000
-@@ -115,7 +115,9 @@
- dbmate
- sops
- yt-dlp
-+admin
- env
- env.fish
-+hermes
- uv
- uvx
 
 === SERVICE CHANGES ===
---- /home/vazir/.nizam-os/inventory/services.txt	2026-06-25 07:00:04.932134556 +0000
-+++ /tmp/tmp.xeCvykZhM6	2026-06-25 08:00:06.403720992 +0000
-@@ -1,6 +1,7 @@
- cron.service | system | active
+--- /home/vazir/.nizam-os/inventory/services.txt	2026-06-25 08:00:06.403720992 +0000
++++ /tmp/tmp.weZ6GU8eOr	2026-06-25 09:00:06.466182468 +0000
+@@ -2,8 +2,8 @@
  fail2ban.service | system | active
  grafana-server.service | system | active
-+hermes-gateway.service | user | active
- litellm-proxy.service | system | activating
- metrics-llm.service | system | failed
+ hermes-gateway.service | user | active
+-litellm-proxy.service | system | activating
+-metrics-llm.service | system | failed
++litellm-proxy.service | system | active
++metrics-llm.service | system | inactive
  metrics-llm.timer | system | active
+ postgresql.service | system | active
+ prometheus-node-exporter.service | system | active
