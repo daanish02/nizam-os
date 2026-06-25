@@ -15,7 +15,6 @@ watcher-inventory.timer
 
 # Nizam-OS — LLM Gateway
 litellm-proxy.service
-metrics-llm.service
 metrics-llm.timer
 
 # Nizam-OS — Hermes Gateway
