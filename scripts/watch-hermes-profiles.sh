@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Bidirectional watcher for hermes profile files.
+# Bidirectional watcher for hermes NAMED PROFILE files.
+#
+# SCOPE — only ~/.hermes/profiles/<name>/ (named profiles).
+# OFF-LIMITS — ~/.hermes/{SOUL.md,config.yaml,.env,skills/,memories/} are the
+#   root/default hermes agent. This watcher NEVER touches them.
 #
 # nizam-os → .hermes: new *.md/.env/config.yaml in nizam-os profile root
 #   → auto-symlinked into ~/.hermes/profiles/{name}/
@@ -80,8 +84,24 @@ watch_hermes_to_nizam() {
     done
 }
 
+# ── Direction 3: nizam-os .env close_write → auto-encrypt ────────────────────
+# User saves a profile .env in nizam-os → .env.enc and .env.example auto-updated
+watch_env_encrypt() {
+    inotifywait -m -r -e close_write --format '%w%f' "$NIZAM_PROFILES" | while IFS= read -r fullpath; do
+        rel="${fullpath#$NIZAM_PROFILES/}"
+        profile_name="${rel%%/*}"
+        filename="${rel#*/}"
+
+        [[ "$filename" == ".env" ]] || continue
+
+        echo "hermes-profile-watcher: [env→enc] encrypting $profile_name/.env"
+        "$NIZAM_OS/scripts/encrypt-profile-env.sh" "$profile_name"
+    done
+}
+
 trap 'kill $(jobs -p) 2>/dev/null; exit 0' EXIT INT TERM
 
 watch_nizam_to_hermes &
 watch_hermes_to_nizam &
+watch_env_encrypt &
 wait
