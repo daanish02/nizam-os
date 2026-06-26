@@ -70,14 +70,13 @@ for profile_dir in "$NIZAM_OS/hermes/profiles"/*/; do
 
     # skills/ and memories/ as directory symlinks
     # Any new file Hermes writes inside lands directly in nizam-os (git tracks it)
+    # ln -sfn: -n treats dst as a normal file even if it's already a symlink to a dir,
+    # preventing ln from following the existing link and creating the new symlink inside it.
     for dir in skills memories; do
         src="$profile_dir/$dir"
         dst="$dst_base/$dir"
-        if [ -d "$src" ] && [ ! -L "$dst" ]; then
-            rm -rf "$dst"
-            ln -sf "$src" "$dst"
-        elif [ -d "$src" ]; then
-            ln -sf "$src" "$dst"
+        if [ -d "$src" ]; then
+            ln -sfn "$src" "$dst"
         fi
     done
 
