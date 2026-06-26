@@ -32,13 +32,23 @@ Metrics written:
 """
 
 import json
+import logging
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 import redis
 import requests
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-5s] [metrics-llm] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+log = logging.getLogger("metrics-llm")
 
 OUT = Path("/var/lib/prometheus/node-exporter/nizam-llm.prom")
 TMP = OUT.with_suffix(".prom.tmp")
@@ -155,10 +165,12 @@ def write_fallback(proxy_up: int) -> None:
     ]
     TMP.write_text("\n".join(lines) + "\n")
     TMP.replace(OUT)
+    log.warning("proxy_up=%d — wrote fallback only (no spend data)", proxy_up)
 
 
 def fetch_logs() -> list | None:
     if not LITELLM_KEY:
+        log.error("LITELLM_MASTER_KEY not set — cannot fetch spend logs")
         return None
     try:
         resp = requests.get(
@@ -168,8 +180,11 @@ def fetch_logs() -> list | None:
             timeout=15,
         )
         resp.raise_for_status()
-        return resp.json()
-    except Exception:
+        data = resp.json()
+        log.info("fetched %d spend log entries", len(data))
+        return data
+    except Exception as e:
+        log.error("fetch_logs failed: %s", e)
         return None
 
 
@@ -206,15 +221,15 @@ def main() -> None:
     latency_by_model: dict = defaultdict(list)
     today_cache_read_by_model: dict = defaultdict(int)
 
-    for log in logs:
-        model = log.get("model", "") or ""
-        profile = log.get("user", "") or "unknown"
-        spend = float(log.get("spend") or 0)
-        in_tok = int(log.get("prompt_tokens") or 0)
-        out_tok = int(log.get("completion_tokens") or 0)
+    for entry in logs:
+        model = entry.get("model", "") or ""
+        profile = entry.get("user", "") or "unknown"
+        spend = float(entry.get("spend") or 0)
+        in_tok = int(entry.get("prompt_tokens") or 0)
+        out_tok = int(entry.get("completion_tokens") or 0)
 
         # Cache tokens: try metadata.usage_object (OpenAI format) then response.usage (Anthropic)
-        meta = log.get("metadata") or {}
+        meta = entry.get("metadata") or {}
         usage_obj = meta.get("usage_object") or {}
         ptd = usage_obj.get("prompt_tokens_details") or {}
         cache_read = int(ptd.get("cached_tokens") or 0)
@@ -228,8 +243,8 @@ def main() -> None:
         totals[key]["cache_read"] += cache_read
         totals[key]["cache_create"] += cache_create
 
-        start_ts = parse_time(log.get("startTime"))
-        end_ts = parse_time(log.get("endTime"))
+        start_ts = parse_time(entry.get("startTime"))
+        end_ts = parse_time(entry.get("endTime"))
 
         if start_ts:
             start_date = start_ts.date()
@@ -247,7 +262,7 @@ def main() -> None:
                 month_spend += spend
 
             if start_ts.timestamp() >= one_hour_ago:
-                dur = log.get("request_duration_ms")
+                dur = entry.get("request_duration_ms")
                 if dur is None and end_ts:
                     dur = (end_ts.timestamp() - start_ts.timestamp()) * 1000
                 if dur is not None:
@@ -335,6 +350,10 @@ def main() -> None:
     TMP.write_text("\n".join(lines) + "\n")
     TMP.replace(OUT)
     OUT.chmod(0o644)
+    log.info(
+        "wrote %d series, today: %d req / %d+%d tok / $%.4f, month: $%.4f",
+        len(totals), today_req, today_in, today_out, today_spend, month_spend,
+    )
 
 
 if __name__ == "__main__":
