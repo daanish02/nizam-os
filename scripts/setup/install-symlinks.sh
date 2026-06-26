@@ -14,6 +14,12 @@ ln -sf "$NIZAM_OS/systemd/metrics-llm.timer"          /etc/systemd/system/metric
 ln -sf "$NIZAM_OS/systemd/watcher-inventory.service"  /etc/systemd/system/watcher-inventory.service
 ln -sf "$NIZAM_OS/systemd/watcher-inventory.timer"    /etc/systemd/system/watcher-inventory.timer
 ln -sf "$NIZAM_OS/systemd/watcher-env.service"        /etc/systemd/system/watcher-env.service
+# logrotate rejects config files not owned by root — symlinks to user-owned files are refused.
+# This is the only file in nizam-os that is COPIED not symlinked.
+# After editing config/logrotate.nizam, re-run this script to push the change.
+cp "$NIZAM_OS/config/logrotate.nizam" /etc/logrotate.d/nizam
+chown root:root /etc/logrotate.d/nizam
+chmod 644 /etc/logrotate.d/nizam
 
 systemctl daemon-reload
 echo "  reloaded system daemon"
@@ -30,9 +36,10 @@ echo "  NOTE: run as vazir → systemctl --user daemon-reload && systemctl --use
 # Tracked: .env, config.yaml, *.md (root only), skills/, memories/
 HERMES_PROFILES="$USER_HOME/.hermes/profiles"
 
-# Wire ~/.hermes/SOUL.md to admin — gateway uses root SOUL.md, not profile SOUL.md
-ln -sf "$NIZAM_OS/hermes/profiles/admin/SOUL.md" "$USER_HOME/.hermes/SOUL.md"
-echo "  linked ~/.hermes/SOUL.md → admin/SOUL.md (gateway default)"
+# !! OFF-LIMITS: ~/.hermes/{SOUL.md,config.yaml,.env,skills/,memories/} !!
+# Those are the root/default hermes agent — managed by hermes itself, never by nizam-os.
+# nizam-os ONLY touches ~/.hermes/profiles/<name>/ (named profiles).
+# Do NOT add symlinks into ~/.hermes/ root here.
 
 for profile_dir in "$NIZAM_OS/hermes/profiles"/*/; do
     name=$(basename "$profile_dir")
