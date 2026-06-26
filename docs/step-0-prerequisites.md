@@ -128,3 +128,29 @@ uv --version && node --version && dbmate --version
 sops --version && age --version
 sudo systemctl is-active postgresql redis-server prometheus grafana-server
 ```
+
+---
+
+## Troubleshooting
+
+```bash
+# PostgreSQL not starting
+sudo journalctl -u postgresql -n 30 --no-pager
+sudo systemctl status postgresql --no-pager
+
+# DB setup-db.sh fails (role already exists, etc.)
+sudo -u postgres psql -c "\du"   # list existing roles
+sudo -u postgres psql -c "\l"    # list databases
+
+# pg_search not loading (shared_preload_libraries)
+sudo grep shared_preload_libraries /etc/postgresql/16/main/postgresql.conf
+sudo journalctl -u postgresql -n 10 --no-pager | grep -i "error\|pg_search"
+
+# sops can't find key
+echo $SOPS_AGE_KEY_FILE             # must point to ~/.nizam-os/secrets/nizam-age-key.txt
+ls -la "$SOPS_AGE_KEY_FILE"         # must exist and be chmod 600
+
+# sops decrypt fails ("no age identity found")
+age-keygen -y ~/.nizam-os/secrets/nizam-age-key.txt   # prints public key
+head -3 ~/.nizam-os/secrets/nizam.env.enc              # first line shows recipient key — must match above
+```

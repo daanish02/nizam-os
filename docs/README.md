@@ -3,7 +3,7 @@
 Agentic OS on a single Hostinger VPS (Ubuntu 24.04, 8GB RAM, 100GB SSD).  
 Sole interface: Discord. Framework: Hermes Agent. LLM routing: OpenRouter via LiteLLM.
 
-Architecture: [architecture.md](architecture.md) · Agents: [agents.md](agents.md) · Services: [services.md](services.md)
+Architecture: [architecture.md](architecture.md) · Agents: [agents.md](agents.md) · Services: [services.md](services.md) · Debugging: [debugging.md](debugging.md)
 
 ---
 
@@ -29,7 +29,7 @@ Grafana ← Prometheus
 |---|---|---|---|
 | 0 | Prerequisites — runtimes, infra, secrets | ✅ Done | [step-0-prerequisites.md](step-0-prerequisites.md) |
 | 1 | LLM observability — LiteLLM proxy + spend logs + metrics + Grafana | ✅ Done | [step-1-llm-observability.md](step-1-llm-observability.md) |
-| 2 | Hermes install + Discord gateway + Bani (admin) profile | 🔄 In progress | [step-2-hermes.md](step-2-hermes.md) |
+| 2 | Setup agents — disable default hermes, create named profiles, wire to nizam-os | 🔄 In progress | [step-2-setup-agents.md](step-2-setup-agents.md) |
 | 3 | DB migrations — all schemas via dbmate | ⬜ | — |
 | 4 | Alex (personal assistant) + finance-service MCP | ⬜ | — |
 | 5 | personal-service MCP (habits, goals, tasks) | ⬜ | — |

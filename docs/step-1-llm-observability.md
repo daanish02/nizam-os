@@ -178,7 +178,22 @@ Runs every 60s as root (system timer). Queries SpendLogs, fetches OpenRouter pri
 
 Trigger manually and verify:
 ```bash
-sudo systemctl start metrics-llm.service
+sudo systemctl start metrics-llm.service && sleep 2 \
+  && sudo journalctl -u metrics-llm.service -n 5 --no-pager
+```
+
+Healthy output looks like:
+```
+[INFO ] [metrics-llm] fetched 28 spend log entries
+[INFO ] [metrics-llm] wrote 15 series, today: 3 req / 1200+450 tok / $0.0012, month: $0.0034
+```
+
+- `fetched 0 entries` → LiteLLM has no logs yet (normal on fresh install)
+- `fetched N entries` but no second line → crash after fetch; check full journal (`-n 30`)
+- No lines at all, service failed → `LITELLM_MASTER_KEY` not set or proxy unreachable
+- `wrote N series` → success; prom file updated
+
+```bash
 cat /var/lib/prometheus/node-exporter/nizam-llm.prom | grep proxy_up
 # should show: nizam_llm_proxy_up 1
 ```
@@ -235,4 +250,95 @@ New entries added to `~/.nizam-os/inventory/tracked-services.txt`:
 litellm-proxy.service
 metrics-llm.service
 metrics-llm.timer
+```
+
+---
+
+## Troubleshooting
+
+### LiteLLM proxy won't start
+
+```bash
+sudo journalctl -u litellm-proxy -n 50 --no-pager
+
+# Reset if stuck in failed
+sudo systemctl reset-failed litellm-proxy && sudo systemctl start litellm-proxy
+
+# Check env vars are loaded (service reads from nizam.env via EnvironmentFile)
+sudo systemctl cat litellm-proxy | grep EnvironmentFile
+sudo systemctl show litellm-proxy -p Environment
+```
+
+### Proxy starts but calls fail / 401
+
+```bash
+# Confirm key matches what's in nizam.env
+source ~/.nizam-os/secrets/nizam.env
+curl -s http://localhost:4000/health/liveliness -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+
+# Check OpenRouter key is valid
+curl -s https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" | python3 -m json.tool | head -10
+```
+
+### metrics-llm.prom only shows `proxy_up 1`, nothing else
+
+```bash
+# Most common: LITELLM_MASTER_KEY not passed to the timer service
+sudo systemctl cat metrics-llm.service | grep -i key
+
+# Run manually with key to see Python errors
+source ~/.nizam-os/secrets/nizam.env
+sudo -E LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY uv run scripts/metrics-llm.py
+
+# Check LiteLLM spend API directly
+curl -s "http://localhost:4000/spend/logs?limit=3" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | python3 -m json.tool
+```
+
+### Prometheus not scraping nizam metrics
+
+```bash
+# Confirm node-exporter textfile dir has the prom file
+ls -la /var/lib/prometheus/node-exporter/
+
+# Check node-exporter exposes it
+curl -s http://localhost:9100/metrics | grep nizam_
+
+# Check prometheus config includes node-exporter
+sudo cat /etc/prometheus/prometheus.yml | grep -A5 node
+
+# Force metrics-llm to run now
+sudo systemctl start metrics-llm.service && sleep 2 \
+  && curl -s "http://localhost:9090/api/v1/query?query=nizam_llm_proxy_up" | python3 -m json.tool
+```
+
+### Grafana dashboard shows "No data"
+
+```bash
+# 1. Check datasource UID matches dashboard expectation
+#    Dashboards → Connections → Data sources → Prometheus → UID must be: nizam-prometheus
+
+# 2. Check Prometheus has the metric at all
+curl -s "http://localhost:9090/api/v1/label/__name__/values" \
+  | python3 -m json.tool | grep nizam
+
+# 3. Check Grafana can reach Prometheus
+sudo journalctl -u grafana-server -n 20 --no-pager | grep -i "error\|datasource"
+```
+
+### Prisma / SpendLogs table missing
+
+```bash
+# Regenerate prisma schema (run after litellm upgrade too)
+SCHEMA=/home/vazir/.local/share/uv/tools/litellm/lib/python3.12/site-packages/litellm/proxy/schema.prisma
+export PATH="/home/vazir/.local/share/uv/tools/litellm/bin:$PATH"
+source ~/.nizam-os/secrets/nizam.env
+
+DATABASE_URL="postgresql://svc_litellm:$LITELLM_DB_PASSWORD@127.0.0.1:5432/nizam?schema=litellm" \
+  prisma db push --schema="$SCHEMA" --accept-data-loss
+
+# Verify table exists
+psql "postgresql://svc_litellm:$LITELLM_DB_PASSWORD@127.0.0.1:5432/nizam" \
+  -c '\dt litellm.*' | grep SpendLogs
 ```
