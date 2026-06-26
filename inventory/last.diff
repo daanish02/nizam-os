@@ -1,15 +1,13 @@
 === SOFTWARE CHANGES ===
 
 === SERVICE CHANGES ===
---- /home/vazir/.nizam-os/inventory/services.txt	2026-06-25 21:00:06.407794609 +0000
-+++ /tmp/tmp.iejRZ4mfKP	2026-06-26 08:00:04.949463788 +0000
-@@ -2,6 +2,9 @@
- fail2ban.service | system | active
- grafana-server.service | system | active
- hermes-gateway-admin.service | user | active
-+hermes-gateway-assistant.service | user | active
-+hermes-gateway-cos.service | user | active
-+hermes-gateway-curator.service | user | active
+--- /home/vazir/.nizam-os/inventory/services.txt	2026-06-26 08:17:37.173630047 +0000
++++ /tmp/tmp.9H8fdRIRD4	2026-06-26 09:45:49.472872431 +0000
+@@ -5,6 +5,7 @@
+ hermes-gateway-assistant.service | user | active
+ hermes-gateway-cos.service | user | active
+ hermes-gateway-curator.service | user | active
++hermes-profile-watcher.service | user | active
  litellm-proxy.service | system | active
  metrics-llm.timer | system | active
  postgresql.service | system | active

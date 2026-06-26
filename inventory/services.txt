@@ -5,6 +5,7 @@ hermes-gateway-admin.service | user | active
 hermes-gateway-assistant.service | user | active
 hermes-gateway-cos.service | user | active
 hermes-gateway-curator.service | user | active
+hermes-profile-watcher.service | user | active
 litellm-proxy.service | system | active
 metrics-llm.timer | system | active
 postgresql.service | system | active

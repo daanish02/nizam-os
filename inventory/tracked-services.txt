@@ -17,6 +17,9 @@ watcher-inventory.timer
 litellm-proxy.service
 metrics-llm.timer
 
+# Nizam-OS — Hermes Profile Watcher
+hermes-profile-watcher.service
+
 # Nizam-OS — Hermes Gateway
 hermes-gateway-admin.service
 hermes-gateway-assistant.service
