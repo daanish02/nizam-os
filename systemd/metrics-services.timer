@@ -1,0 +1,11 @@
+[Unit]
+Description=Run metrics-services every 5 minutes
+Requires=metrics-services.service
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=5min
+Unit=metrics-services.service
+
+[Install]
+WantedBy=timers.target

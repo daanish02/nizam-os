@@ -25,6 +25,7 @@ Metrics written:
     nizam_llm_spend_usd_this_month
     nizam_llm_cache_hit_rate_today        (0.0–1.0)
     nizam_llm_cache_savings_usd_today
+    nizam_llm_cache_savings_usd_total
     nizam_llm_avg_latency_ms_1h{model}
 
   Status:
@@ -324,11 +325,16 @@ def main() -> None:
     section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
     lines.append(f"nizam_llm_spend_usd_this_month {month_spend:.6f}")
 
-    # ── Cache savings (today) ─────────────────────────────────────────────────
-    if today_cache_read_by_model:
-        model_prices = get_model_prices(r)
-        savings = 0.0
-        for m, cr in today_cache_read_by_model.items():
+    # ── Cache savings (today + all time) ─────────────────────────────────────
+    all_cache_read_by_model: dict = defaultdict(int)
+    for (m, _profile), v in totals.items():
+        all_cache_read_by_model[m] += v["cache_read"]
+
+    model_prices = get_model_prices(r) if (today_cache_read_by_model or all_cache_read_by_model) else {}
+
+    def _calc_savings(cache_by_model: dict) -> float:
+        s = 0.0
+        for m, cr in cache_by_model.items():
             mc = clean_model(m)
             pricing = model_prices.get(mc) or model_prices.get(m)
             if not pricing:
@@ -336,9 +342,14 @@ def main() -> None:
             prompt_price = pricing.get("prompt")
             cache_read_price = pricing.get("cache_read")
             if prompt_price is not None and cache_read_price is not None:
-                savings += cr * (prompt_price - cache_read_price)
-        section("Estimated USD saved via provider prompt cache today", "gauge", "nizam_llm_cache_savings_usd_today")
-        lines.append(f"nizam_llm_cache_savings_usd_today {savings:.6f}")
+                s += cr * (prompt_price - cache_read_price)
+        return s
+
+    section("Estimated USD saved via provider prompt cache today", "gauge", "nizam_llm_cache_savings_usd_today")
+    lines.append(f"nizam_llm_cache_savings_usd_today {_calc_savings(today_cache_read_by_model):.6f}")
+
+    section("Estimated USD saved via provider prompt cache all time", "gauge", "nizam_llm_cache_savings_usd_total")
+    lines.append(f"nizam_llm_cache_savings_usd_total {_calc_savings(all_cache_read_by_model):.6f}")
 
     # ── Avg latency by model (last 1h) ────────────────────────────────────────
     if latency_by_model:

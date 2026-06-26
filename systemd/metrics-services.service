@@ -1,0 +1,7 @@
+[Unit]
+Description=Write Prometheus metrics for tracked service health
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/vazir/.nizam-os/scripts/metrics-services.sh
