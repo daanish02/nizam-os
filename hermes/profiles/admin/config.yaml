@@ -290,7 +290,7 @@ display:
     telegram:
       streaming: true
     discord:
-      streaming: false
+      streaming: true
   runtime_footer:
     enabled: false
     fields:
@@ -430,9 +430,14 @@ slack:
   allowed_channels: ''
   channel_prompts: {}
 discord:
-  require_mention: true
+  require_mention: false
   free_response_channels: ''
-  allowed_channels: ''
+  allowed_channels:
+  - '1517682798595539045'  #alerts
+  - '1517682837674000394'  #metrics
+  - '1519774449086234674'  #logs
+  - '1518347733109313596'  #admin
+  - '1518198482538729502'  #test
   auto_thread: true
   thread_require_mention: false
   history_backfill: true
