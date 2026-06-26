@@ -19,3 +19,6 @@ metrics-llm.timer
 
 # Nizam-OS — Hermes Gateway
 hermes-gateway-admin.service
+hermes-gateway-assistant.service
+hermes-gateway-curator.service
+hermes-gateway-cos.service

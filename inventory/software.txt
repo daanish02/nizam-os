@@ -116,6 +116,9 @@ dbmate
 sops
 yt-dlp
 admin
+assistant
+cos
+curator
 env
 env.fish
 hermes
