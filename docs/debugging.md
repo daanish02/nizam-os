@@ -49,7 +49,7 @@ Rotated daily, 14 days kept, by logrotate. Config: `config/logrotate.nizam`.
 
 ```bash
 # System services
-sudo systemctl is-active litellm-proxy metrics-llm.timer watcher-env watcher-inventory
+sudo systemctl is-active litellm-proxy metrics-llm.timer metrics-services.timer watcher-env watcher-inventory
 
 # User services (run as vazir, no sudo)
 systemctl --user is-active hermes-profile-watcher \
@@ -238,6 +238,23 @@ cat ~/.nizam-os/inventory/services.txt
 ls -la ~/.nizam-os/inventory/
 ```
 
+### metrics-services (service health → Prometheus)
+
+Reads `inventory/services.txt` every 5 min, writes `nizam-services.prom` for the Grafana System Health row.
+
+```bash
+sudo systemctl status metrics-services.timer --no-pager
+sudo journalctl -u metrics-services.service -n 10 --no-pager
+
+# Trigger manually and verify
+sudo systemctl start metrics-services.service && cat /var/lib/prometheus/node-exporter/nizam-services.prom
+
+# Confirm Prometheus is scraping it
+curl -s "http://localhost:9090/api/v1/query?query=nizam_services_total" | python3 -m json.tool | grep value
+```
+
+> `metrics-services` depends on `watcher-inventory` having run first. If `nizam-services.prom` is missing or stale, run `sudo systemctl start watcher-inventory.service` then `sudo systemctl start metrics-services.service`.
+
 ---
 
 ## Symlinks
@@ -247,6 +264,8 @@ ls -la ~/.nizam-os/inventory/
 ls -la /etc/systemd/system/litellm-proxy.service \
        /etc/systemd/system/metrics-llm.service \
        /etc/systemd/system/metrics-llm.timer \
+       /etc/systemd/system/metrics-services.service \
+       /etc/systemd/system/metrics-services.timer \
        /etc/systemd/system/watcher-env.service \
        /etc/systemd/system/watcher-inventory.service
 

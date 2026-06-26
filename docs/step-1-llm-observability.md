@@ -136,14 +136,17 @@ Units live in `~/.nizam-os/systemd/`. Deployed via symlinks into `/etc/systemd/s
 
 ```bash
 sudo bash scripts/setup/install-symlinks.sh
-sudo systemctl enable --now litellm-proxy metrics-llm.timer
+sudo systemctl enable --now litellm-proxy metrics-llm.timer metrics-services.timer
 ```
 
 Verify:
 ```bash
-sudo systemctl status litellm-proxy --no-pager   # active (running)
-sudo systemctl status metrics-llm.timer --no-pager   # active (waiting)
+sudo systemctl status litellm-proxy --no-pager        # active (running)
+sudo systemctl status metrics-llm.timer --no-pager    # active (waiting)
+sudo systemctl status metrics-services.timer --no-pager   # active (waiting)
 ```
+
+`metrics-services.timer` runs every 5 min, reads `inventory/tracked-services.txt`, writes `/var/lib/prometheus/node-exporter/nizam-services.prom` — powers the System Health row in the Grafana dashboard. Requires `watcher-inventory.timer` to have run at least once first (generates the source file).
 
 ---
 
