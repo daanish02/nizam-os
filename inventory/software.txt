@@ -64,6 +64,8 @@ libxkbcommon0 | 1.6.0-1build1
 libxrandr2 | 2:1.5.2-2build1
 linux-virtual | 6.8.0-124.124
 login | 1:4.13+dfsg1-4ubuntu3.2
+monarx-agent | 4.3.38-master
+monarx-protect | 5.2.24-master
 monarx-protect-autodetect | 5.2.24-master
 ncal | 12.1.8
 ncurses-base | 6.4+20240113-1ubuntu2
