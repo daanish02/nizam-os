@@ -18,5 +18,9 @@ secrets.yaml
 
 # Runtime / generated
 *.prom
-*.log
 /tmp/
+
+# Logs — rotated by logrotate, not committed
+logs/*.log
+logs/*.gz
+!logs/.gitkeep
