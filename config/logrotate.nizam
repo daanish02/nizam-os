@@ -1,0 +1,10 @@
+/home/vazir/.nizam-os/logs/*.log {
+    su vazir vazir
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 vazir vazir
+}
