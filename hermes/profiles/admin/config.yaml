@@ -1,10 +1,15 @@
 model:
   default: deepseek/deepseek-v4-flash
-  provider: openrouter
+  provider: custom:litellm
   base_url: http://localhost:4000
   api_mode: chat/completions
 providers: {}
 fallback_providers: []
+custom_providers:
+  - name: litellm
+    base_url: http://localhost:4000
+    key_env: LITELLM_MASTER_KEY
+    api_mode: chat/completions
 credential_pool_strategies: {}
 toolsets:
 - hermes-cli
