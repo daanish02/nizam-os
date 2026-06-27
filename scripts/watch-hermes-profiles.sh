@@ -66,9 +66,14 @@ watch_hermes_to_nizam() {
                     mv "$fullpath" "$nizam_path"
                     ln -sf "$nizam_path" "$fullpath"
                     echo "hermes-profile-watcher: [hermes→nizam] migrated $profile_name/$filename"
+                    # New profile config — apply SAVE governance automatically
+                    if [[ "$filename" == "config.yaml" ]]; then
+                        echo "hermes-profile-watcher: [governance] applying SAVE to new profile $profile_name"
+                        python3 "$NIZAM_OS/scripts/save/setup-profile-governance.py" "$profile_name" &
+                    fi
                 fi
                 ;;
-            skills|memories)
+            skills|memories|pending)
                 if [ -d "$fullpath" ] && [ ! -L "$fullpath" ]; then
                     mkdir -p "$nizam_path"
                     sleep 1  # let hermes finish populating dir before we take over
