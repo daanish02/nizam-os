@@ -1,10 +1,10 @@
-# Agents — Nizam-OS
+# Agents — nizam-os
 
 Reference for all Hermes profiles. Profile files live in `hermes/profiles/<name>/`.
 
 ---
 
-## Agent Roster
+## Agent roster
 
 ### Active profiles
 
@@ -26,7 +26,7 @@ Reference for all Hermes profiles. Profile files live in `hermes/profiles/<name>
 
 ---
 
-## Profile File Structure
+## Profile file structure
 
 Each profile directory contains:
 
@@ -46,7 +46,7 @@ SOUL.md links to the other files via markdown. The agent reads them when it need
 
 ---
 
-## Profile Summaries
+## Profile summaries
 
 ### Bani — admin
 
@@ -115,41 +115,30 @@ Chief of Staff. First business-side agent. Routes business requests to the right
 
 ---
 
-## Delegation Hierarchy
+## Delegation hierarchy
 
+```mermaid
+flowchart TD
+    You --> Bani["Bani (admin)\nsystem, infra, capabilities"]
+    You --> Ayah["Ayah (assistant)\npersonal life"]
+    You --> Noor["Noor (curator)\nlearning and knowledge"]
+    You --> Hala["Hala (cos)\nbusiness"]
+    Hala --> Arwa["Arwa (cto) — planned"]
+    Hala --> Omar["Omar (cfo) — planned"]
+    Hala --> COO["coo — planned"]
+    Hala --> Mira["Mira (cmo) — planned"]
 ```
-You
-├── Bani (admin)      — system, infra, "what can the system do"
-├── Ayah (assistant)  — personal life
-├── Noor (curator)    — learning and knowledge
-└── Hala (cos)        — business (delegates to C-suite when built)
-      ├── Arwa (cto)  — [planned]
-      ├── Omar (cfo)  — [planned]
-      ├── coo         — [planned]
-      └── Mira (cmo)  — [planned]
-```
+
+Channel assignment and permission matrix: [discord.md](discord.md).
 
 ---
 
-## Discord Channels
-
-| Channel | Profile | Purpose |
-|---|---|---|
-| `#admin` | Bani | System admin, deploy, debug, health checks |
-| `#chat` | Ayah | Personal — daily driver |
-| `#learning` | Noor | Learning, vault, knowledge |
-| `#biz-chat` | Hala | Business — daily driver |
-| `#alerts` | System | Grafana + service alerts |
-| `#logs` | System | Traces, raw tool output |
-
----
-
-## Cron Schedule
+## Cron schedule
 
 | Schedule | Profile | Job |
 |---|---|---|
 | 08:00 daily | Ayah | Morning brief (habits, budget, tasks) |
 | Every Monday 09:00 | Ayah | Weekly personal review |
 | 08:30 daily | Hala | Business brief (open items, pipeline, alerts) — when active |
-| 02:00 daily | System | Backup: pg_dump + SQLite + vault git push |
+| 02:00 daily | System | Backup: pg_dump + SQLite + vault git push — not yet wired |
 | Every minute | System | metrics-llm.py collector |

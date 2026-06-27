@@ -4,7 +4,7 @@ Quick-reference for diagnosing any part of the stack. Work top-down: infra → p
 
 ---
 
-## nizam-log — Unified Log Viewer (start here)
+## nizam-log — unified log viewer (start here)
 
 Single command that shows system services → agent gateways → one-shot scripts in sequence:
 
@@ -21,9 +21,9 @@ Sections: `system` | `agents` | `scripts` | `metrics`
 
 ---
 
-## One-Shot Script Logs
+## One-shot script logs
 
-Scripts that run manually (wire-hermes-profile, encrypt/decrypt-profile-env) write to:
+Scripts sourcing `_log.sh` (wire-hermes-profile, watch-inventory, metrics-services, etc.) write to:
 ```
 ~/.nizam-os/logs/scripts.log
 ```
@@ -45,7 +45,7 @@ Rotated daily, 14 days kept, by logrotate. Config: `config/logrotate.nizam`.
 
 ---
 
-## Full Stack Status
+## Full stack status
 
 ```bash
 # System services
@@ -120,7 +120,7 @@ sudo systemctl restart grafana-server && sleep 3 && sudo systemctl is-active gra
 
 ---
 
-## LiteLLM Proxy
+## LiteLLM proxy
 
 ```bash
 sudo systemctl status litellm-proxy --no-pager
@@ -151,7 +151,7 @@ sudo systemctl reset-failed litellm-proxy && sudo systemctl start litellm-proxy
 
 ---
 
-## Metrics Collector (metrics-llm.py)
+## Metrics collector (metrics-llm.py)
 
 ```bash
 sudo systemctl status metrics-llm.service --no-pager
@@ -176,7 +176,7 @@ sudo -E LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY uv run scripts/metrics-llm.py
 
 ---
 
-## Hermes — Agents
+## Hermes — agents
 
 ### All gateways
 
@@ -220,36 +220,27 @@ ps aux | grep inotifywait | grep -v grep
 
 ## Watchers
 
-### watcher-env (nizam.env auto-encrypt)
+| Watcher | Unit | What it does |
+|---|---|---|
+| watcher-env | `watcher-env.service` | Watches `nizam.env`, auto-encrypts on change |
+| watcher-inventory | `watcher-inventory.timer` | Hourly: diffs software+service inventory, notifies Discord |
+| metrics-services | `metrics-services.timer` | Every 5 min: reads `services.txt`, writes `nizam-services.prom` for Grafana system health row |
 
 ```bash
-sudo systemctl status watcher-env.service --no-pager
-sudo journalctl -u watcher-env.service -n 20 --no-pager
+sudo systemctl status <unit> --no-pager
+sudo journalctl -u <unit> -n 20 --no-pager
 ```
 
-### watcher-inventory
+Manual triggers:
 
 ```bash
-sudo systemctl status watcher-inventory --no-pager
-sudo journalctl -u watcher-inventory -n 20 --no-pager
+# watcher-inventory — check last generated
+cat ~/.nizam-os/inventory/services.txt && ls -la ~/.nizam-os/inventory/
 
-# Check last generated inventory
-cat ~/.nizam-os/inventory/services.txt
-ls -la ~/.nizam-os/inventory/
-```
-
-### metrics-services (service health → Prometheus)
-
-Reads `inventory/services.txt` every min, writes `nizam-services.prom` for the Grafana System Health row.
-
-```bash
-sudo systemctl status metrics-services.timer --no-pager
-sudo journalctl -u metrics-services.service -n 10 --no-pager
-
-# Trigger manually and verify
+# metrics-services — trigger and verify
 sudo systemctl start metrics-services.service && cat /var/lib/prometheus/node-exporter/nizam-services.prom
 
-# Confirm Prometheus is scraping it
+# Confirm Prometheus is scraping
 curl -s "http://localhost:9090/api/v1/query?query=nizam_services_total" | python3 -m json.tool | grep value
 ```
 
@@ -280,14 +271,14 @@ ls -la ~/.hermes/profiles/admin/
 
 ---
 
-## Common Fixes
+## Common fixes
 
 | Symptom | Command |
 |---|---|
 | Service stuck in `failed` | `sudo systemctl reset-failed <unit> && sudo systemctl start <unit>` |
 | Changed a systemd unit file | `sudo systemctl daemon-reload && sudo systemctl restart <unit>` |
 | Changed user service | `systemctl --user daemon-reload && systemctl --user restart <unit>` |
-| metrics-llm writes only `proxy_up 1`, no other metrics | Check `LITELLM_MASTER_KEY` in `/etc/systemd/system/metrics-llm.service` env |
+| metrics-llm writes only `proxy_up 1`, no other metrics | Check `LITELLM_MASTER_KEY` in `~/.nizam-os/secrets/nizam.env` (loaded via `EnvironmentFile`) |
 | Grafana dashboard shows "No data" | Check Prometheus datasource UID is `nizam-prometheus`; check `nizam_llm_proxy_up` query in Prometheus UI |
 | Hermes gateway not connecting to Discord | `journalctl --user -u hermes-gateway-<name> -f` — usually bad `DISCORD_BOT_TOKEN` or missing Privileged Intents |
 | Profile files not symlinking | Run `bash ~/.nizam-os/scripts/setup/wire-hermes-profile.sh <name>` |
@@ -295,7 +286,7 @@ ls -la ~/.hermes/profiles/admin/
 
 ---
 
-## Data Flow Checkpoints
+## Data flow checkpoints
 
 ```bash
 Discord message

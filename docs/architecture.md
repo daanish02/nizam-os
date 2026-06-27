@@ -1,6 +1,6 @@
 # Architecture — Nizam-OS
 
-## System Diagram
+## System diagram
 
 ```mermaid
 flowchart TD
@@ -8,50 +8,45 @@ flowchart TD
     D --> HG["Hermes Gateway\nchannel → profile router"]
 
     HG --> Bani["Bani · admin\nSystem admin"]
-    HG --> Alex["Alex · assistant\nPersonal"]
-    HG --> Raha["Raha · cos\nChief of Staff"]
-    Raha --> CSuite["Arwa CTO · Omar CFO\nHala COO · Mira CMO"]
+    HG --> Ayah["Ayah · assistant\nPersonal"]
+    HG --> Hala["Hala · cos\nChief of Staff"]
+    Hala --> CSuite["Arwa CTO · Omar CFO\ncoo · Mira CMO"]
 
-    Bani & Alex & Raha & CSuite --> LLM["LiteLLM Proxy :4000"]
+    Bani & Ayah & Hala & CSuite --> LLM["LiteLLM Proxy :4000"]
     LLM --> OR["OpenRouter → any model"]
 
-    Alex & Raha & CSuite --> SVC["MCP Service Layer\nfinance · personal · crm · knowledge · social · analytics · math"]
+    Ayah & Hala & CSuite --> SVC["MCP Service Layer\nfinance · personal · crm · knowledge · social · analytics · math"]
 
     Bani --> SYS["System\nlogs · services · scripts"]
 
     SVC --> PG["PostgreSQL\nschemas: finance · personal · crm · audit"]
-    SVC --> OV["Obsidian Vault\n/personal /business /commons"]
-    HG --> SQ["SQLite — Hermes managed\nsessions · Kanban boards"]
+    SVC --> OV["nizam-vault\n/personal /business /commons"]
+    HG --> SQ["SQLite — Hermes managed\nsessions"]
 
     Redis["Redis"] -.-> LLM
     Redis -.-> SVC
 
-    PG --> Prom["Prometheus"]
     TextFiles["textfile collectors\nmetrics-*.py / metrics-*.sh"] --> Prom
     Prom --> Grafana["Grafana"]
 ```
 
-> Excalidraw diagram attached separately — cleaner visual.
-
 ---
 
-## Three Domains
+## Three domains
 
-```
-PERSONAL          BUSINESS (Arc Systems)     COMMONS (Learning)
-────────          ──────────────────────     ──────────────────
-Alex              Raha → C-Suite             Flat vault
-                                             Read on-demand only
-Finances          CTO · CFO · COO · CMO      Write w/ approval
-Goals · Tasks     + Bani (system admin)      
-Habits
-Journal
-```
+| Domain | Agent | Contents |
+|---|---|---|
+| Personal | Ayah | Finances, goals, tasks, habits, journal |
+| Business (Arc Systems) | Hala → C-suite | CRM, operations, projects; Bani handles system admin |
+| Commons (Learning) | Noor | Shared knowledge vault — read by all, write by Noor w/ approval |
 
 **Cross-domain rules:**
-- Personal sees business headlines only (revenue, client count, pipeline value)
-- Commons: read on-demand by allowed profiles, write only by Noor with approval
-- All writes logged to `audit_log`
+
+| Domain | Can read from other domains | Write restriction |
+|---|---|---|
+| Personal | Business headlines only (revenue, client count, pipeline value) | — |
+| Commons | Readable by all allowed profiles | Write: Noor only, approval-gated |
+| All | — | Every write appended to `audit_log` |
 
 ---
 
@@ -61,7 +56,7 @@ All agent↔service communication uses MCP. Agents auto-discover tools at connec
 
 ---
 
-## Model Independence
+## Model independence
 
 Model choice is config, not code. Every profile specifies its model. Switching from Sonnet to GPT-5 or Gemini is one line in the profile config. OpenRouter is the single provider abstraction.
 
@@ -82,13 +77,12 @@ Model choice is config, not code. Every profile specifies its model. Switching f
 | Tailscale | ~30MB | zero public ports after setup |
 | **Typical total** | **~3.5–5GB** | headroom for Claude Code spawns |
 
-**Sandboxing:** Firejail (`devbox.profile`) for CTO/dev sub-agents. Separate `dev-user` Linux account. Filesystem whitelist, caps dropped, no root, seccomp filter.
+**Sandboxing (planned with Arwa):** Firejail (`devbox.profile`) for CTO/dev sub-agents. Separate `dev-user` Linux account. Filesystem whitelist, caps dropped, no root, seccomp filter.
 
-<!-- **Backups:** Daily 2AM — pg_dump + SQLite copy + vault git push. Weekly full dump → Hostinger/B2. 7 daily / 4 weekly retention. Recovery ~1 hour. -->
 
 ---
 
-## Per-Service DB Users
+## Per-service DB users
 
 Each MCP service has its own PostgreSQL role. Compromise of one service = one schema exposed.
 
@@ -103,21 +97,21 @@ Each MCP service has its own PostgreSQL role. Compromise of one service = one sc
 
 ---
 
-## Data Access Matrix
+## Data access matrix
 
 | Profile | Personal Finance | Biz Finance | CRM | Commons | Biz Headlines |
 |---|---|---|---|---|---|
 | Bani | — | — | — | — | — |
 | Ayah | **RW** | — | — | R + write w/ approval | R (aggregates) |
-| Raha | — | — | — | — | R |
+| Hala | — | — | — | — | R |
 | Arwa (CTO) | — | R (project costs) | R (requirements) | R | — |
 | Omar (CFO) | — | **RW** | R (invoicing) | — | — |
-| Hala (COO) | — | R (quoting) | **RW** | — | — |
+| coo | — | R (quoting) | **RW** | — | — |
 | Mira (CMO) | — | — | R (case studies) | R | — |
 
 ---
 
-## Search & Retrieval
+## Search & retrieval
 
 Phase 1 uses hybrid search from day one:
 
@@ -132,7 +126,7 @@ Embeddings recomputed only on content change (content_hash tracking). Embedding 
 
 ---
 
-## Caching Strategy
+## Caching strategy
 
 **LLM responses:** LiteLLM Redis cache — identical requests returned from cache, not billed.
 
@@ -153,12 +147,12 @@ Embeddings recomputed only on content change (content_hash tracking). Embedding 
 
 ---
 
-## Cost Estimate
+## Cost estimate
 
 | Item | Monthly |
 |---|---|
 | VPS (annualized) | ~$12 |
-| Sonnet (Alex, Raha, Omar, Hala, Mira) | $20–50 |
+| Sonnet (Ayah, Noor, Hala, Omar, Mira) | $20–50 |
 | Opus (Arwa) | $15–40 |
 | Flash (sub-agents) | $3–10 |
 | **Total** | **$50–112** |
@@ -167,7 +161,7 @@ Controls: Grafana alert at $60/mo warn, $90/mo hard. CFO zero delegation. Max 4 
 
 ---
 
-## Server Separation (Future)
+## Server separation (future)
 
 Single VPS now. When business grows:
 

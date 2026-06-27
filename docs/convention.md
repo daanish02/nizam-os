@@ -27,6 +27,20 @@ Applies to: nizam-dotfiles, nizam-os. Shared style, consistent across both.
 
 ---
 
+## Writing for AI readers
+
+Docs are read by agents (Bani, Arwa, etc.) and by Claude Code sessions as context. AI readers parse structure differently from humans — they don't skim, but they lose precision when references are ambiguous.
+
+Rules:
+- Define a term on first use, then use it consistently throughout. Don't alternate between "LiteLLM proxy", "the proxy", and "LiteLLM" — pick one and keep it.
+- Never use "the above" or "as mentioned earlier" — restate the noun. AI has no scroll position.
+- Avoid orphaned pronouns. "It writes the file" → "The script writes the file."
+- One concept per sentence. Compound sentences that chain three conditions degrade comprehension for both AI and humans.
+- Prefer concrete over abstract. "Runs every 5 minutes via `metrics-services.timer`" beats "runs periodically".
+- Put context before detail. State what a section is about in the first sentence, then go into specifics.
+
+---
+
 ## README
 
 The README is the most important file in a repo. It is read by everyone — tech and non-tech alike. Write it so a non-technical person understands what the project is and why it matters, and a technical person understands how it works and where to go next.
@@ -78,6 +92,10 @@ Rules:
 - Max header depth is `###`. If a section needs `####`, the file needs splitting.
 
 **When to create a new doc:** a new file when the topic is a distinct operational area — a new service, a new procedure, a new subsystem. Otherwise extend the existing file. If unsure, extend first and split when it gets unwieldy.
+
+**Subdirectories:** when a topic fans out into multiple related files, create a subdirectory with an index file (e.g., `docs/services/` with `docs/services.md` as the index). Each child file must start with a back-link to the index: `Part of [services overview](../services.md).`
+
+**Horizontal rules:** use `---` only between H2 sections. Never inside a subsection. No `---` at the very top or bottom of a file.
 
 ## Repo structure trees
 
@@ -241,6 +259,27 @@ See [metrics pipeline](dashboard.md#pipeline) for the data flow.
 ```
 
 When referencing another repo, name it — do not link: "See nizam-os for service setup."
+
+---
+
+## Planned vs implemented
+
+Never mix live and planned content in the same section without a clear marker.
+
+In tables, add a `Status` column:
+
+| Service | Status |
+|---|---|
+| `finance-service` | Step 4 — planned |
+| `metrics-llm` | Live |
+
+For entire sections or files that describe planned work, add a blockquote at the top of that section:
+
+```markdown
+> Not yet implemented. Describes planned behaviour for step 4.
+```
+
+Never drop a "planned" note just because the surrounding section sounds confident. Design specs read like facts unless explicitly marked.
 
 ---
 

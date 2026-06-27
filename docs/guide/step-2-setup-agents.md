@@ -234,7 +234,7 @@ psql "postgresql://svc_litellm:<password>@127.0.0.1:5432/nizam" \
 
 Pattern for every new profile. Two concrete examples:
 
-### Example 1 — assistant (Alex, personal assistant)
+### Example 1 — assistant (Ayah, personal assistant)
 
 ```bash
 # 1. create profile
@@ -256,7 +256,7 @@ assistant gateway status
 journalctl --user -u hermes-gateway-assistant -n 20 --no-pager
 ```
 
-### Example 2 — cos (Raha, Chief of Staff)
+### Example 2 — cos (Hala, Chief of Staff)
 
 ```bash
 hermes profile create cos

@@ -1,6 +1,6 @@
-# Discord Server — Darbar-e-Nizam
+# Discord server — Darbar-e-Nizam
 
-## Design Principles
+## Design principles
 
 - **Categories are private by default.** Each agent sees only the channels relevant to its role. An agent that can't see a channel can't be accidentally triggered by it.
 - **One channel, one purpose.** Blurry boundaries mean agents get confused context and you don't know where to look.
@@ -9,9 +9,9 @@
 
 ---
 
-## Server Structure
+## Server structure
 
-### 📌 Start Here (public)
+### Start here (public)
 
 | Channel | Type | Purpose |
 |---|---|---|
@@ -22,7 +22,7 @@ No agents have access. Static reference for you.
 
 ---
 
-### 👤 Personal (private)
+### Personal (private)
 
 Agents: **Ayah** (all but `#learning` channel) · **Noor** (`#learning` only)
 
@@ -39,7 +39,7 @@ Agents: **Ayah** (all but `#learning` channel) · **Noor** (`#learning` only)
 
 ---
 
-### ⚙️ System (private)
+### System (private)
 
 Agents: **Bani** (all channels)
 
@@ -49,12 +49,10 @@ Agents: **Bani** (all channels)
 | `#alerts` | Output (automated) | Grafana threshold breaches, service failures, health check anomalies. Bani may also post here. |
 | `#sandbox` | Input + output | Scratch space — test commands, try things, no clean-up expected. One per server. |
 
-**`#metrics` removed.** Grafana dashboard replaces it. `#alerts` covers the threshold-breach case.
-**`#logs` removed.** System logs live in Grafana/journalctl. Hermes session logs are in Hermes itself. No Discord equivalent needed.
 
 ---
 
-### 🏛️ Chairman's Office (private — user only)
+### Chairman's office (private — user only)
 
 No agents have access.
 
@@ -62,30 +60,29 @@ No agents have access.
 |---|---|---|
 | `#strategy` | Read + write | Your planning space — active initiatives, future ideas, decisions made. No agent noise. |
 
-**`#current-plans` + `#future-plans` merged.** The split added no value — both were your notes. One channel, pinned messages or threads for separation if needed.
 
 ---
 
-### 🏢 Arc Systems (private)
+### Arc Systems (private)
 
-Agents: **Raha** (`#biz-chat`, `#boardroom`) · each C-suite agent in their own office only
+Agents: **Hala** (`#biz-chat`, `#boardroom`) · each C-suite agent in their own office only
 
 | Channel | Type | Agent | Purpose |
 |---|---|---|---|
-| `#biz-chat` | Input + output | Raha | General business conversation — projects, status, coordination |
-| `#boardroom` | Input + output | Raha | High-level decisions, strategy execution, cross-C-suite topics |
+| `#biz-chat` | Input + output | Hala | General business conversation — projects, status, coordination |
+| `#boardroom` | Input + output | Hala | High-level decisions, strategy execution, cross-C-suite topics |
 | `#cto-office` | Input + output | Arwa | Tech, architecture, dev projects |
 | `#cfo-office` | Input + output | Omar | Finance, budgets, reporting |
-| `#coo-office` | Input + output | Hala | Operations, CRM, delivery |
+| `#coo-office` | Input + output | coo | Operations, CRM, delivery |
 | `#cmo-office` | Input + output | Mira | Marketing, content, brand |
 
-**Why Raha can't see C-suite offices:** CoS coordinates at the board level, not inside each function. Each office is a private workspace for that agent + you. Raha gets outputs through `#boardroom`.
+**Why Hala can't see C-suite offices:** CoS coordinates at the board level, not inside each function. Each office is a private workspace for that agent + you. Hala gets outputs through `#boardroom`.
 
 ---
 
-## Permission Matrix
+## Permission matrix
 
-| Category | User | Bani | Ayah | Raha | Noor | Arwa | Omar | Hala | Mira |
+| Category | User | Bani | Ayah | Hala | Noor | Arwa | Omar | coo | Mira |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Start Here | ✓ | | | | | | | | |
 | Personal | ✓ | | ✓¹ | | ✓² | | | | |
@@ -93,14 +90,14 @@ Agents: **Raha** (`#biz-chat`, `#boardroom`) · each C-suite agent in their own 
 | Chairman's Office | ✓ | | | | | | | | |
 | Arc Systems | ✓ | | | ✓³ | | ✓⁴ | ✓⁴ | ✓⁴ | ✓⁴ |
 
-¹ Ayah: all Personal channels except `#learning`
-² Noor: `#learning` only
-³ Raha: `#biz-chat` + `#boardroom` only
+¹ Ayah: all Personal channels except `#learning`  
+² Noor: `#learning` only  
+³ Hala: `#biz-chat` + `#boardroom` only  
 ⁴ Each C-suite agent: their own office only
 
 ---
 
-## Agents vs Webhooks
+## Agents vs webhooks
 
 **Agents** post through the Hermes bot (app). When Ayah sends a morning brief or Bani responds to a command, that's the bot speaking — not a webhook. Agent messages use the bot's identity; the channel name and context tell you which agent is talking.
 
@@ -132,22 +129,21 @@ Icons live in `assets/` in the GitHub repo.
 | `error` | Something failed, system still running |
 | `critical` | Intervention required — multiple services down, OOM |
 
-**Skill Watcher icon:** currently a red octagon (stop/danger). Replace with `warning` from assets/ — skill approval is "attention needed", not an emergency.
 
 ---
 
-## Recreating This Server
+## Recreating this server
 
 ```
 1. Create server: "Darbar-e-Nizam"
 2. Delete default channels
 
 3. Categories + channels:
-   📌 Start Here      → public
+   Start Here      → public
      #welcome          (read-only for @everyone)
      #server-map       (read-only for @everyone)
 
-   👤 Personal        → private
+   Personal        → private
      #chat
      #briefing
      #finances
@@ -155,15 +151,15 @@ Icons live in `assets/` in the GitHub repo.
      #journal
      #learning
 
-   ⚙️ System          → private
+   System          → private
      #admin
      #alerts
      #sandbox
 
-   🏛️ Chairman's Office → private
+   Chairman's Office → private
      #strategy
 
-   🏢 Arc Systems     → private
+   Arc Systems     → private
      #biz-chat
      #boardroom
      #cto-office
@@ -171,7 +167,7 @@ Icons live in `assets/` in the GitHub repo.
      #coo-office
      #cmo-office
 
-4. Create roles: Bani · Ayah · Raha · Noor · Arwa · Omar · Hala · Mira
+4. Create roles: Bani · Ayah · Hala · Noor · Arwa · Omar · coo · Mira
 
 5. Set permissions per permission matrix above
 
@@ -183,26 +179,3 @@ Icons live in `assets/` in the GitHub repo.
 8. Pin #server-map with a summary of this doc
 ```
 
----
-
-## What Goes Where — Quick Reference
-
-| You want to… | Channel |
-|---|---|
-| Talk to Bani about the server/system | `#admin` |
-| Get a system alert | `#alerts` |
-| Approve/reject a skill | `#admin` (Skill Watcher posts there) |
-| Talk to Alex/Ayah | `#chat` |
-| See your daily brief | `#briefing` |
-| Check finances | `#finances` |
-| Track goals | `#goals-tasks` |
-| Write a journal entry | `#journal` |
-| Log something you're learning | `#learning` |
-| Talk to Raha about business | `#biz-chat` |
-| Strategic business decisions | `#boardroom` |
-| Work with Arwa on tech | `#cto-office` |
-| Work with Omar on money | `#cfo-office` |
-| Work with Hala on ops | `#coo-office` |
-| Work with Mira on marketing | `#cmo-office` |
-| Your own planning space | `#strategy` |
-| Test something | `#sandbox` |
