@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Enumerate tracked service statuses to stdout (one line per service).
+# Called by watch-inventory.sh — output is piped to inventory/services.txt.
 set -euo pipefail
 
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -7,7 +9,7 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 TRACKED="$HOME/.nizam-os/inventory/tracked-services.txt"
 
 [ -f "$TRACKED" ] || {
-    echo "Missing tracked-services.txt"
+    echo "Missing tracked-services.txt" >&2
     exit 1
 }
 

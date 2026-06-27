@@ -12,12 +12,12 @@
 #   wire-hermes-profile.sh                    all profiles in ~/.hermes/profiles/
 set -euo pipefail
 
-NIZAM_OS=/home/vazir/.nizam-os
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_NAME="wire-hermes-profile"
 source "$NIZAM_OS/scripts/_log.sh"
 
 NIZAM_PROFILES="$NIZAM_OS/hermes/profiles"
-HERMES_PROFILES=/home/vazir/.hermes/profiles
+HERMES_PROFILES="$HOME/.hermes/profiles"
 export SOPS_AGE_KEY_FILE="$NIZAM_OS/secrets/nizam-age-key.txt"
 
 # If .env is missing but .env.enc exists, decrypt first (fresh VPS / after git clone)
@@ -94,7 +94,6 @@ wire_profile() {
         fi
     done < <(find "$h" -maxdepth 1 \( -name "*.md" -o -name ".env" -o -name "config.yaml" \) ! -type l -print0 2>/dev/null)
 
-    # Files in nizam-os not yet linked in .hermes
     while IFS= read -r -d '' f; do
         local base; base=$(basename "$f")
         local hp="$h/$base"

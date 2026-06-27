@@ -4,8 +4,8 @@
 #   sudo bash scripts/setup/install-symlinks.sh
 set -euo pipefail
 
-NIZAM_OS=/home/vazir/.nizam-os
-USER_HOME=/home/vazir
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
+USER_HOME="$HOME"
 
 # ── Systemd system units (require sudo) ───────────────────────────────────────
 ln -sf "$NIZAM_OS/systemd/litellm-proxy.service"      /etc/systemd/system/litellm-proxy.service
@@ -52,13 +52,11 @@ for profile_dir in "$NIZAM_OS/hermes/profiles"/*/; do
         continue
     fi
 
-    # .md files in profile root
     for md in "$profile_dir"*.md; do
         [ -f "$md" ] || continue
         ln -sf "$md" "$dst_base/$(basename "$md")"
     done
 
-    # config.yaml
     if [ -f "$profile_dir/config.yaml" ]; then
         ln -sf "$profile_dir/config.yaml" "$dst_base/config.yaml"
     fi
@@ -68,8 +66,6 @@ for profile_dir in "$NIZAM_OS/hermes/profiles"/*/; do
         ln -sf "$profile_dir/.env" "$dst_base/.env"
     fi
 
-    # skills/ and memories/ as directory symlinks
-    # Any new file Hermes writes inside lands directly in nizam-os (git tracks it)
     # ln -sfn: -n treats dst as a normal file even if it's already a symlink to a dir,
     # preventing ln from following the existing link and creating the new symlink inside it.
     for dir in skills memories; do

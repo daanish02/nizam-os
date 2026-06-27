@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Unified log viewer for nizam-os.
-# Shows: system services → user services → one-shot scripts (sequential).
-#
-# Usage:
-#   nizam-log              last 30 lines per section
-#   nizam-log -n 100       last 100 lines per section
-#   nizam-log -f           follow system journal (most useful for live debug)
-#   nizam-log -s scripts   show only scripts.log
-#   nizam-log -s agents    show only hermes gateway logs
-#   nizam-log -s metrics   show only metrics-llm logs
+# Shows system services, user agent gateways, and one-shot script logs.
+# Usage: nizam-log [-n N] [-f] [-s system|agents|scripts|metrics]
 
 LINES=30
 FOLLOW=0

@@ -3,12 +3,16 @@
 # Runs every 5 min as root via metrics-services.timer (same pattern as metrics-llm).
 set -euo pipefail
 
-SERVICES_FILE="/home/vazir/.nizam-os/inventory/services.txt"
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="metrics-services"
+source "$NIZAM_OS/scripts/_log.sh"
+
+SERVICES_FILE="$NIZAM_OS/inventory/services.txt"
 OUT="/var/lib/prometheus/node-exporter/nizam-services.prom"
 TMP="${OUT}.tmp"
 
 if [ ! -f "$SERVICES_FILE" ]; then
-    echo "metrics-services: services.txt not found — skipping"
+    log_error "services.txt not found — skipping"
     exit 1
 fi
 
@@ -49,4 +53,4 @@ done < "$SERVICES_FILE"
 
 mv "$TMP" "$OUT"
 chmod 644 "$OUT"
-echo "metrics-services: wrote ${up}/${total} services up"
+log_info "wrote ${up}/${total} services up"

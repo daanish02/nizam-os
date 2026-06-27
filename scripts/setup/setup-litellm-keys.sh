@@ -4,8 +4,9 @@
 # Idempotent: skips profiles that already have a virtual key in .env.
 set -euo pipefail
 
-NIZAM_ENV="/home/vazir/.nizam-os/secrets/nizam.env"
-PROFILES_DIR="/home/vazir/.nizam-os/hermes/profiles"
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
+NIZAM_ENV="$NIZAM_OS/secrets/nizam.env"
+PROFILES_DIR="$NIZAM_OS/hermes/profiles"
 LITELLM_URL="http://localhost:4000"
 
 # shellcheck source=/dev/null

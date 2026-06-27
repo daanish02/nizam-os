@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 # Shared logging helper for nizam-os one-shot scripts.
-# Source this file — do NOT run directly.
-#
-# Usage in calling script:
-#   SCRIPT_NAME="my-script"
-#   source "$NIZAM_OS/scripts/_log.sh"
-#   log_info "something happened"
-#   log_warn "something looks off"
-#   log_error "something failed"
+# Source this file — set SCRIPT_NAME first, then call log_info / log_warn / log_error.
+# Override log path: NIZAM_LOG=/path/to/other.log source _log.sh
 
 NIZAM_LOG="${NIZAM_LOG:-$HOME/.nizam-os/logs/scripts.log}"
 mkdir -p "$(dirname "$NIZAM_LOG")"

@@ -13,14 +13,13 @@
 #   → covers: hermes profile create {name}, agent-written skills (SAVE framework)
 set -euo pipefail
 
-NIZAM_OS=/home/vazir/.nizam-os
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 NIZAM_PROFILES="$NIZAM_OS/hermes/profiles"
-HERMES_PROFILES=/home/vazir/.hermes/profiles
+HERMES_PROFILES="$HOME/.hermes/profiles"
 
 echo "hermes-profile-watcher: started (bidirectional)"
 
 # ── Direction 1: nizam-os → .hermes ──────────────────────────────────────────
-# User writes file in nizam-os → auto-symlink appears in .hermes
 watch_nizam_to_hermes() {
     inotifywait -m -r -e create,moved_to --format '%w%f' "$NIZAM_PROFILES" | while IFS= read -r fullpath; do
         rel="${fullpath#$NIZAM_PROFILES/}"
@@ -45,7 +44,6 @@ watch_nizam_to_hermes() {
 }
 
 # ── Direction 2: .hermes → nizam-os ──────────────────────────────────────────
-# Hermes creates file/dir in .hermes (e.g. hermes profile create) → migrate to nizam-os
 watch_hermes_to_nizam() {
     inotifywait -m -r -e create,moved_to --format '%w%f' "$HERMES_PROFILES" | while IFS= read -r fullpath; do
         # Skip files already managed as symlinks (avoid loop)
@@ -90,7 +88,6 @@ watch_hermes_to_nizam() {
 }
 
 # ── Direction 3: nizam-os .env close_write → auto-encrypt ────────────────────
-# User saves a profile .env in nizam-os → .env.enc and .env.example auto-updated
 watch_env_encrypt() {
     inotifywait -m -r -e close_write --format '%w%f' "$NIZAM_PROFILES" | while IFS= read -r fullpath; do
         rel="${fullpath#$NIZAM_PROFILES/}"

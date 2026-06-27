@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Enumerate installed apt packages and local binaries to stdout.
+# Called by watch-inventory.sh — output is piped to inventory/software.txt.
 set -euo pipefail
 
 echo "=== APT PACKAGES ==="

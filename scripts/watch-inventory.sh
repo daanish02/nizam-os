@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
+# Detect software and service inventory changes and notify via Discord webhook.
+# Runs hourly via watcher-inventory.timer.
 set -euo pipefail
 
-BASE="$HOME/.nizam-os/inventory"
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="watch-inventory"
+source "$NIZAM_OS/scripts/_log.sh"
+
+BASE="$NIZAM_OS/inventory"
 
 mkdir -p "$BASE"
 
@@ -16,13 +22,12 @@ DIFF_FILE="$BASE/last.diff"
 TMP_SOFTWARE=$(mktemp)
 TMP_SERVICES=$(mktemp)
 
-"$HOME/.nizam-os/scripts/generate-software-inventory.sh" > "$TMP_SOFTWARE"
-"$HOME/.nizam-os/scripts/generate-services-inventory.sh" > "$TMP_SERVICES"
+"$NIZAM_OS/scripts/generate-software-inventory.sh" > "$TMP_SOFTWARE"
+"$NIZAM_OS/scripts/generate-services-inventory.sh" > "$TMP_SERVICES"
 
 SOFTWARE_NEW_HASH=$(sha256sum "$TMP_SOFTWARE" | awk '{print $1}')
 SERVICES_NEW_HASH=$(sha256sum "$TMP_SERVICES" | awk '{print $1}')
 
-# First run
 if [ ! -f "$SOFTWARE" ]; then
     mv "$TMP_SOFTWARE" "$SOFTWARE"
     mv "$TMP_SERVICES" "$SERVICES"
@@ -59,9 +64,9 @@ mv "$TMP_SERVICES" "$SERVICES"
 echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
 echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
 
-echo "Inventory changed"
+log_info "inventory changed"
 
-ENV_FILE="$HOME/.nizam-os/secrets/nizam.env"
+ENV_FILE="$NIZAM_OS/secrets/nizam.env"
 if [ -f "$ENV_FILE" ]; then
     # shellcheck source=/dev/null
     source "$ENV_FILE"

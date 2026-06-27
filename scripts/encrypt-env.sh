@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Encrypt nizam.env → nizam.env.enc using the age public key.
+# Run manually before committing secrets changes.
 set -euo pipefail
 
 export SOPS_AGE_KEY_FILE="$HOME/.nizam-os/secrets/nizam-age-key.txt"
