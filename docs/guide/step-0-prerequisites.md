@@ -1,7 +1,7 @@
 # Step 0 — Prerequisites
 
 Everything that must be on the server before Step 1.  
-Machine-level setup (shell, git, security monitoring) is in `~/.nizam-dotfiles/docs/startup.md` — do that first.
+Machine-level setup (shell, git, monitoring stack, Tailscale) is in `~/.nizam-dotfiles/docs/startup-guide.md` — do that first.
 
 ---
 
@@ -61,17 +61,7 @@ sudo nano /etc/postgresql/16/main/postgresql.conf
 # Redis
 sudo apt install -y redis-server
 
-# Prometheus
-sudo apt install -y prometheus
-
-# Grafana
-sudo mkdir -p /etc/apt/keyrings
-wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
-echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | \
-  sudo tee /etc/apt/sources.list.d/grafana.list
-sudo apt update && sudo apt install -y grafana
-
-sudo systemctl enable --now postgresql redis-server prometheus grafana-server
+sudo systemctl enable --now postgresql redis-server
 sudo systemctl restart postgresql   # pick up pg_search in shared_preload_libraries
 ```
 
@@ -126,7 +116,7 @@ bash ~/.nizam-os/scripts/setup/setup-db.sh
 ```bash
 uv --version && node --version && dbmate --version
 sops --version && age --version
-sudo systemctl is-active postgresql redis-server prometheus grafana-server
+sudo systemctl is-active postgresql redis-server
 ```
 
 ---
