@@ -48,7 +48,7 @@ logging.basicConfig(
 log = logging.getLogger("skill-watcher")
 
 HERMES_PROFILES = Path.home() / ".hermes" / "profiles"
-NIZAM_PROFILES = Path("/home/vazir/.nizam-os/hermes/profiles")
+NIZAM_PROFILES = Path(__file__).parent.parent.parent / "hermes" / "profiles"
 STATE_DIR = Path.home() / ".hermes" / "pending"
 NOTIFIED_FILE = STATE_DIR / ".skill_notified"
 PENDING_MAP_FILE = STATE_DIR / ".skill_pending_map"
@@ -146,7 +146,7 @@ def send_discord(record: dict) -> None:
     body_excerpt = skill_body_excerpt(content) if content else ""
 
     embed: dict = {
-        "title": f"🔏 Skill Approval Needed: `{skill_name}`",
+        "title": f"Skill Approval Needed: `{skill_name}`",
         "color": ACTION_COLOURS.get(action, 0x95A5A6),
         "fields": [
             {"name": "Author", "value": author, "inline": True},

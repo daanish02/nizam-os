@@ -167,20 +167,12 @@ def main() -> None:
 
     rows.sort(key=lambda r: r[2])  # sort by score ascending (worst first)
 
-    FLAG_ICONS = {
-        "ok":                "✅",
-        "needs_review":      "⚠️ ",
-        "archive_candidate": "🔴",
-        "stale":             "💤",
-    }
-
     header = f"{'Profile':<12} {'Skill':<35} {'Score':>5} {'Flag':<18} {'Uses':>5} {'Patches':>7} {'Last Used':<12}"
     print(header)
     print("-" * len(header))
 
     for profile, skill, s, flag, uses, patches, lu in rows:
-        icon = FLAG_ICONS.get(flag, "  ")
-        print(f"{profile:<12} {skill:<35} {s:>5} {icon} {flag:<14} {uses:>5} {patches:>7} {lu:<12}")
+        print(f"{profile:<12} {skill:<35} {s:>5} {flag:<18} {uses:>5} {patches:>7} {lu:<12}")
 
         if write_back and flag != "ok":
             # Only update state if it's currently 'active' (don't overwrite existing flags)

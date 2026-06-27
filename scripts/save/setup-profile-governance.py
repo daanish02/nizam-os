@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-NIZAM_PROFILES = Path("/home/vazir/.nizam-os/hermes/profiles")
+NIZAM_PROFILES = Path(__file__).parent.parent.parent / "hermes" / "profiles"
 HERMES_PROFILES = Path.home() / ".hermes" / "profiles"
 
 
