@@ -5,3 +5,6 @@ Description=Generate services and software inventory
 Type=oneshot
 User=vazir
 ExecStart=/home/vazir/.nizam-os/scripts/watch-inventory.sh
+
+[Install]
+WantedBy=multi-user.target

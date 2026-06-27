@@ -1,5 +1,5 @@
 [Unit]
-Description=Nizam-OS Hermes Profile File Watcher
+Description=Watch Hermes profile files for changes and sync to .hermes
 After=default.target
 
 [Service]

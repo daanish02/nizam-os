@@ -1,5 +1,5 @@
 [Unit]
-Description=Nizam-OS Skill Approval Watcher — inotify on Hermes pending/skills/
+Description=Watch Hermes pending skills and post approval requests to Discord
 After=default.target
 
 [Service]
