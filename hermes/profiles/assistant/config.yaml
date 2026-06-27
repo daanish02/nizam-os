@@ -414,8 +414,8 @@ skills:
   template_vars: true
   inline_shell: false
   inline_shell_timeout: 10
-  guard_agent_created: false
-  write_approval: false
+  guard_agent_created: true
+  write_approval: true
 curator:
   enabled: true
   interval_hours: 168
