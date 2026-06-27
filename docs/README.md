@@ -29,7 +29,7 @@ Grafana ← Prometheus
 
 | # | What | Status | Guide |
 |---|---|---|---|
-| 0 | Prerequisites — runtimes, infra, secrets | ✅ Done | [step-0-prerequisites.md](step-0-prerequisites.md) |
+| 0 | Prerequisites — runtimes, infra, secrets | ✅ Done | [step-0-prerequisites.md](guide/step-0-prerequisites.md) |
 | 1 | LLM observability — LiteLLM proxy + spend logs + metrics + Grafana | ✅ Done | [step-1-llm-observability.md](step-1-llm-observability.md) |
 | 2 | Setup agents — disable default hermes, create named profiles, wire to nizam-os | 🔄 In progress | [step-2-setup-agents.md](step-2-setup-agents.md) |
 | 3 | DB migrations via dbmate | ⬜ | — |
