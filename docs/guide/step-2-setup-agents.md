@@ -17,11 +17,9 @@ Step 1 complete (LiteLLM proxy running, metrics flowing). Plus:
 
 ```bash
 curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-```
 
-Verify:
-```bash
-hermes --version   # Hermes Agent v0.17.x
+# Verify
+hermes --version
 ```
 
 ---

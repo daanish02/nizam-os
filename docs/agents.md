@@ -55,7 +55,7 @@ SOUL.md links to the other files via markdown. The agent reads them when it need
 1. **Incident response** — when something breaks: triage, fix what can be done autonomously, request approval for destructive actions, always send a structured incident report.
 2. **System advisor** — proactively surfaces what the system can do, new Hermes capabilities, and suggested improvements. The source of truth for "what can this system do?"
 
-Not a day-to-day work agent. Routes personal/business/knowledge tasks to the right agent.
+Not a day-to-day work agent.
 
 **System access:** full read of all services, logs, agent profiles, nizam-os, nizam-dotfiles. Autonomous: service restarts, diagnostics. Approval required: config edits, file deletion, writes to other agent profiles.
 

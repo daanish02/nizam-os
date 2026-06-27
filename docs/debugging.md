@@ -39,7 +39,7 @@ grep ERROR ~/.nizam-os/logs/scripts.log   # errors only
 
 Rotated daily, 14 days kept, by logrotate. Config: `config/logrotate.nizam`.
 
-> **Non-obvious**: logrotate requires its config files to be owned by root — symlinks to user-owned files are rejected. `config/logrotate.nizam` is therefore **copied** (not symlinked) to `/etc/logrotate.d/nizam` by `install-symlinks.sh`. If you edit `config/logrotate.nizam`, re-run `sudo bash scripts/setup/install-symlinks.sh` to push the change.
+> logrotate requires its config files to be owned by root — symlinks to user-owned files are rejected. `config/logrotate.nizam` is therefore **copied** (not symlinked) to `/etc/logrotate.d/nizam` by `install-symlinks.sh`. If you edit `config/logrotate.nizam`, re-run `sudo bash scripts/setup/install-symlinks.sh` to push the change.
 >
 > `su vazir vazir` in the config is required because the log dir is in the user homedir, not `/var/log` — without it logrotate refuses to rotate "insecure" user-owned paths.
 
@@ -240,7 +240,7 @@ ls -la ~/.nizam-os/inventory/
 
 ### metrics-services (service health → Prometheus)
 
-Reads `inventory/services.txt` every 5 min, writes `nizam-services.prom` for the Grafana System Health row.
+Reads `inventory/services.txt` every min, writes `nizam-services.prom` for the Grafana System Health row.
 
 ```bash
 sudo systemctl status metrics-services.timer --no-pager
@@ -297,7 +297,7 @@ ls -la ~/.hermes/profiles/admin/
 
 ## Data Flow Checkpoints
 
-```
+```bash
 Discord message
   → hermes-gateway-<name>          journalctl --user -u hermes-gateway-<name> -f
       → LiteLLM proxy :4000        curl localhost:4000/health/liveliness

@@ -43,14 +43,14 @@ PERSONAL          BUSINESS (Arc Systems)     COMMONS (Learning)
 Alex              Raha → C-Suite             Flat vault
                                              Read on-demand only
 Finances          CTO · CFO · COO · CMO      Write w/ approval
-Goals · Tasks     + Bani (system admin)      No dedicated agent
+Goals · Tasks     + Bani (system admin)      
 Habits
 Journal
 ```
 
 **Cross-domain rules:**
 - Personal sees business headlines only (revenue, client count, pipeline value)
-- Commons: read on-demand by allowed profiles, write only by Alex with your approval
+- Commons: read on-demand by allowed profiles, write only by Noor with approval
 - All writes logged to `audit_log`
 
 ---
@@ -84,7 +84,7 @@ Model choice is config, not code. Every profile specifies its model. Switching f
 
 **Sandboxing:** Firejail (`devbox.profile`) for CTO/dev sub-agents. Separate `dev-user` Linux account. Filesystem whitelist, caps dropped, no root, seccomp filter.
 
-**Backups:** Daily 2AM — pg_dump + SQLite copy + vault git push. Weekly full dump → Hostinger/B2. 7 daily / 4 weekly retention. Recovery ~1 hour.
+<!-- **Backups:** Daily 2AM — pg_dump + SQLite copy + vault git push. Weekly full dump → Hostinger/B2. 7 daily / 4 weekly retention. Recovery ~1 hour. -->
 
 ---
 
@@ -108,7 +108,7 @@ Each MCP service has its own PostgreSQL role. Compromise of one service = one sc
 | Profile | Personal Finance | Biz Finance | CRM | Commons | Biz Headlines |
 |---|---|---|---|---|---|
 | Bani | — | — | — | — | — |
-| Alex | **RW** | — | — | R + write w/ approval | R (aggregates) |
+| Ayah | **RW** | — | — | R + write w/ approval | R (aggregates) |
 | Raha | — | — | — | — | R |
 | Arwa (CTO) | — | R (project costs) | R (requirements) | R | — |
 | Omar (CFO) | — | **RW** | R (invoicing) | — | — |
@@ -171,7 +171,7 @@ Controls: Grafana alert at $60/mo warn, $90/mo hard. CFO zero delegation. Max 4 
 
 Single VPS now. When business grows:
 
-- **VPS 1** — Personal: Alex, personal-service, finance (personal), knowledge, commons vault
+- **VPS 1** — Personal: Ayah, personal-service, finance (personal), knowledge, commons vault
 - **VPS 2** — Business: C-suite, finance (business), crm-service, social-service
 
 Bridge: one-way read-only HTTP endpoint from VPS 2 exposing business headlines to VPS 1. No other runtime dependency between machines. Schemas are already separated so migration is clean.
