@@ -141,7 +141,9 @@ def check_proxy_up() -> int:
 
 
 def clean_model(raw: str) -> str:
-    return raw.removeprefix("openrouter/")
+    while raw.startswith("openrouter/"):
+        raw = raw[len("openrouter/"):]
+    return raw
 
 
 def provider_from_model(model: str) -> str:
@@ -193,7 +195,7 @@ def main() -> None:
     proxy_up = check_proxy_up()
 
     logs = fetch_logs()
-    if not logs:
+    if logs is None:
         write_fallback(proxy_up)
         return
 
@@ -203,6 +205,7 @@ def main() -> None:
     one_hour_ago = now.timestamp() - 3600
 
     r = get_redis()
+    model_prices = get_model_prices(r)
     lines: list[str] = []
 
     def section(help_text: str, metric_type: str, name: str) -> None:
@@ -225,9 +228,19 @@ def main() -> None:
     for entry in logs:
         model = entry.get("model", "") or ""
         profile = entry.get("user", "") or "unknown"
-        spend = float(entry.get("spend") or 0)
         in_tok = int(entry.get("prompt_tokens") or 0)
         out_tok = int(entry.get("completion_tokens") or 0)
+
+        litellm_spend = float(entry.get("spend") or 0)
+        if litellm_spend == 0.0 and (in_tok or out_tok):
+            mc = clean_model(model)
+            pricing = model_prices.get(mc) or model_prices.get(model)
+            if pricing:
+                spend = in_tok * (pricing.get("prompt") or 0.0) + out_tok * (pricing.get("completion") or 0.0)
+            else:
+                spend = 0.0
+        else:
+            spend = litellm_spend
 
         # Cache tokens: try metadata.usage_object (OpenAI format) then response.usage (Anthropic)
         meta = entry.get("metadata") or {}
@@ -329,8 +342,6 @@ def main() -> None:
     all_cache_read_by_model: dict = defaultdict(int)
     for (m, _profile), v in totals.items():
         all_cache_read_by_model[m] += v["cache_read"]
-
-    model_prices = get_model_prices(r) if (today_cache_read_by_model or all_cache_read_by_model) else {}
 
     def _calc_savings(cache_by_model: dict) -> float:
         s = 0.0
