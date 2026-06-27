@@ -23,7 +23,6 @@ litellm_settings:
   drop_params: false
   request_timeout: 600
   # Pass caller-supplied 'user' field through to SpendLogs.end_user.
-  # Hermes sets this to the profile name in Step 2.
   store_end_user: true
 
 general_settings:
