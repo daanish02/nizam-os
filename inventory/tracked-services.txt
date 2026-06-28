@@ -19,6 +19,7 @@ metrics-llm.timer
 
 # Nizam-OS — Service Health Metrics
 metrics-services.timer
+metrics-toolcalls.timer
 
 # Nizam-OS — Hermes Profile Watcher
 hermes-profile-watcher.service

@@ -40,6 +40,7 @@ _RE_TOOL = re.compile(
     r".*?agent\.tool_executor: [Tt]ool ([\w]+) "
     r"(completed|returned error)"
     r".*?\((\d+(?:\.\d+)?)s"
+    r"(?:,\s*(\d+)\s*chars)?"
 )
 
 
@@ -54,8 +55,8 @@ def main() -> None:
     now = datetime.now(timezone.utc)
     today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    counts: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "errors": 0, "duration_s": 0.0}))
-    today: dict = defaultdict(lambda: defaultdict(int))
+    counts: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "errors": 0, "duration_s": 0.0, "chars": 0}))
+    today: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "chars": 0}))
 
     for profile_dir in sorted(HERMES_PROFILES.iterdir()):
         if not profile_dir.is_dir():
@@ -84,12 +85,15 @@ def main() -> None:
                     tool = m.group(2)
                     is_error = m.group(3) == "returned error"
                     duration_s = float(m.group(4))
+                    chars = int(m.group(5)) if m.group(5) else 0
                     counts[profile][tool]["calls"] += 1
                     counts[profile][tool]["duration_s"] += duration_s
+                    counts[profile][tool]["chars"] += chars
                     if is_error:
                         counts[profile][tool]["errors"] += 1
                     if ts >= today_midnight:
-                        today[profile][tool] += 1
+                        today[profile][tool]["calls"] += 1
+                        today[profile][tool]["chars"] += chars
             except Exception as e:
                 log.warning("failed reading %s: %s", path, e)
 
@@ -115,10 +119,20 @@ def main() -> None:
         for tool, v in sorted(tools.items()):
             lines.append(f'nizam_tool_duration_seconds_total{{profile="{profile}",tool="{tool}"}} {v["duration_s"]:.3f}')
 
+    section("Hermes tool output chars across retained logs by profile and tool", "counter", "nizam_tool_output_chars_total")
+    for profile, tools in sorted(counts.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_output_chars_total{{profile="{profile}",tool="{tool}"}} {v["chars"]}')
+
     section("Hermes tool calls since midnight UTC by profile and tool", "gauge", "nizam_tool_calls_today")
     for profile, tools in sorted(today.items()):
-        for tool, count in sorted(tools.items()):
-            lines.append(f'nizam_tool_calls_today{{profile="{profile}",tool="{tool}"}} {count}')
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_calls_today{{profile="{profile}",tool="{tool}"}} {v["calls"]}')
+
+    section("Hermes tool output chars since midnight UTC by profile and tool", "gauge", "nizam_tool_output_chars_today")
+    for profile, tools in sorted(today.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_output_chars_today{{profile="{profile}",tool="{tool}"}} {v["chars"]}')
 
     TMP.write_text("\n".join(lines) + "\n")
     TMP.replace(OUT)
