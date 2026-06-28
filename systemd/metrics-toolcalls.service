@@ -1,0 +1,11 @@
+[Unit]
+Description=Write Hermes tool call metrics to Prometheus node-exporter textfile
+
+[Service]
+Type=oneshot
+User=vazir
+EnvironmentFile=/home/vazir/.nizam-os/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/.nizam-os/scripts/metrics-toolcalls.py
+
+[Install]
+WantedBy=multi-user.target
