@@ -1,14 +1,16 @@
 === SOFTWARE CHANGES ===
---- /home/vazir/.nizam-os/inventory/software.txt	2026-06-26 11:00:06.231930430 +0000
-+++ /tmp/tmp.4rbVteBcyK	2026-06-26 15:00:04.783377428 +0000
-@@ -64,6 +64,8 @@
- libxrandr2 | 2:1.5.2-2build1
- linux-virtual | 6.8.0-124.124
- login | 1:4.13+dfsg1-4ubuntu3.2
-+monarx-agent | 4.3.38-master
-+monarx-protect | 5.2.24-master
- monarx-protect-autodetect | 5.2.24-master
- ncal | 12.1.8
- ncurses-base | 6.4+20240113-1ubuntu2
 
 === SERVICE CHANGES ===
+--- /home/vazir/.nizam-os/inventory/services.txt	2026-06-26 15:00:05.092378842 +0000
++++ /tmp/tmp.12gPwV6fJ5	2026-06-28 09:00:06.666792690 +0000
+@@ -2,8 +2,8 @@
+ fail2ban.service | system | active
+ grafana-server.service | system | active
+ hermes-gateway-admin.service | user | active
+-hermes-gateway-assistant.service | user | active
+-hermes-gateway-cos.service | user | active
++hermes-gateway-assistant.service | user | inactive
++hermes-gateway-cos.service | user | inactive
+ hermes-gateway-curator.service | user | active
+ hermes-profile-watcher.service | user | active
+ litellm-proxy.service | system | active

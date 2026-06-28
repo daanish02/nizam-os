@@ -2,8 +2,8 @@ cron.service | system | active
 fail2ban.service | system | active
 grafana-server.service | system | active
 hermes-gateway-admin.service | user | active
-hermes-gateway-assistant.service | user | active
-hermes-gateway-cos.service | user | active
+hermes-gateway-assistant.service | user | inactive
+hermes-gateway-cos.service | user | inactive
 hermes-gateway-curator.service | user | active
 hermes-profile-watcher.service | user | active
 litellm-proxy.service | system | active
