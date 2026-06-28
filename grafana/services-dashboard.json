@@ -1,0 +1,190 @@
+{
+  "id": null,
+  "uid": "nizam-services",
+  "title": "Nizam — Services",
+  "description": "Service health, gateway status, and infrastructure for all Nizam components",
+  "tags": ["nizam", "services"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+
+    {
+      "id": 1, "type": "stat", "title": "Services Up", "transparent": true,
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "nizam_services_up_total / nizam_services_total * 100", "legendFormat": "", "refId": "A", "instant": true }],
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "orientation": "auto", "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#F2495C", "value": null },
+            { "color": "#FF9830", "value": 80 },
+            { "color": "#73BF69", "value": 95 }
+          ]},
+          "mappings": []
+        }, "overrides": []
+      }
+    },
+
+    {
+      "id": 2, "type": "stat", "title": "Down", "transparent": true,
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "nizam_services_total - nizam_services_up_total", "legendFormat": "", "refId": "A", "instant": true }],
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "orientation": "auto", "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#73BF69", "value": null },
+            { "color": "#FF9830", "value": 1 },
+            { "color": "#F2495C", "value": 3 }
+          ]},
+          "mappings": []
+        }, "overrides": []
+      }
+    },
+
+    {
+      "id": 3, "type": "stat", "title": "LiteLLM Proxy", "transparent": true,
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "nizam_llm_proxy_up", "legendFormat": "", "refId": "A", "instant": true }],
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center",
+        "orientation": "auto", "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#F2495C", "value": null },
+            { "color": "#73BF69", "value": 1 }
+          ]},
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "DOWN", "index": 0 },
+              "1": { "text": "UP",   "index": 1 }
+            }}
+          ]
+        }, "overrides": []
+      }
+    },
+
+    {
+      "id": 4, "type": "state-timeline", "title": "Service Status — 24h History", "transparent": true,
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "nizam_service_up", "legendFormat": "{{service}}", "refId": "A" }],
+      "options": {
+        "fillOpacity": 80,
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "never",
+        "legend": { "displayMode": "hidden", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "spanNulls": false,
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#F2495C", "value": null },
+            { "color": "#73BF69", "value": 1 }
+          ]},
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "DOWN", "index": 0 },
+              "1": { "text": "UP",   "index": 1 }
+            }}
+          ]
+        }, "overrides": []
+      }
+    },
+
+    {
+      "id": 5, "type": "table", "title": "Current Status", "transparent": true,
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "nizam_service_up", "legendFormat": "", "refId": "A", "instant": true, "format": "table" }],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "Value #A": false },
+            "renameByName": { "service": "Service", "type": "Type", "Value #A": "Status" },
+            "indexByName": { "service": 0, "type": 1, "Value #A": 2 }
+          }
+        },
+        { "id": "sortBy", "options": { "fields": [{ "desc": false, "displayName": "Status" }] } }
+      ],
+      "options": {
+        "cellHeight": "md",
+        "footer": { "enablePagination": false, "show": false },
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Status", "desc": false }]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": { "type": "auto" },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "custom.width", "value": 160 },
+              { "id": "custom.align", "value": "center" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "#F2495C", "value": null },
+                { "color": "#73BF69", "value": 1 }
+              ]}},
+              { "id": "mappings", "value": [
+                { "type": "value", "options": {
+                  "0": { "text": "DOWN", "index": 0 },
+                  "1": { "text": "UP",   "index": 1 }
+                }}
+              ]}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Type" },
+            "properties": [{ "id": "custom.width", "value": 80 }]
+          }
+        ]
+      }
+    }
+
+  ]
+}
