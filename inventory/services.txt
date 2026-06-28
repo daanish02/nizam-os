@@ -9,6 +9,7 @@ hermes-profile-watcher.service | user | active
 litellm-proxy.service | system | active
 metrics-llm.timer | system | active
 metrics-services.timer | system | active
+metrics-toolcalls.timer | system | active
 postgresql.service | system | active
 prometheus-node-exporter.service | system | active
 prometheus.service | system | active
