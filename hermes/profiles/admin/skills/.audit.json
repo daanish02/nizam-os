@@ -26,5 +26,33 @@
     "actor": "user",
     "timestamp": "2026-06-27T10:17:47Z",
     "note": "pending file removed without SKILL.md appearing"
+  },
+  {
+    "event": "proposed",
+    "skill": "youtube-content",
+    "actor": "admin",
+    "timestamp": "2026-06-28T00:30:19Z",
+    "note": "action=patch pending_id=c30410e0"
+  },
+  {
+    "event": "proposed",
+    "skill": "youtube-content",
+    "actor": "admin",
+    "timestamp": "2026-06-28T00:34:05Z",
+    "note": "action=patch pending_id=9b45409a"
+  },
+  {
+    "event": "proposed",
+    "skill": "youtube-content",
+    "actor": "admin",
+    "timestamp": "2026-06-28T20:12:19Z",
+    "note": "action=patch pending_id=b37a93a8"
+  },
+  {
+    "event": "proposed",
+    "skill": "youtube-content",
+    "actor": "admin",
+    "timestamp": "2026-06-28T20:12:29Z",
+    "note": "action=patch pending_id=059e1299"
   }
 ]

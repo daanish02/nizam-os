@@ -88,15 +88,25 @@ Personal assistant. The most frequently used agent day-to-day. Knows finances, h
 
 ### Noor — curator
 
-Knowledge curator. Maintains `~/.nizam-vault/commons/` — the structured knowledge base. Responsible for keeping learning organised and searchable.
+Knowledge curator. Maintains `~/.nizam-vault/commons/` — flat, structured, searchable knowledge base. Every write requires explicit user approval.
 
 **Responsibilities:**
-- Archive and tag things learned (articles, YouTube videos, concepts)
-- Maintain the commons vault structure
-- Surface relevant knowledge when asked
-- Research (later capability)
+- Capture: given a URL, video, or concept → extract and create a tagged note
+- Organise: enforce MECE taxonomy (one domain, one subdomain, free-form tags)
+- Surface: search vault before creating anything; report what already exists
+- Gate: every vault write is approval-gated and logged to `knowledge.vault_audit`
 
-**Access:** `knowledge-service` (vault read + write).
+**Access:** `knowledge` MCP toolset — vault search, read, create, update, URL/YouTube ingestion.
+
+**Disabled toolsets:** `browser`, `code_execution`, `cronjob`, `delegation`, `image_gen`, `terminal`, `todo`, `tts`, `vision` — Noor's scope is narrow; all writes go through the MCP.
+
+**MECE taxonomy:** 10 domains (technology, science, business, finance-economics, philosophy-ethics, health-wellness, arts-culture, history-society, language-communication, personal-development). Each note gets exactly one domain + one subdomain. Tag layer is unconstrained.
+
+**Approval workflow:** always draft first (`approved=False`), present to user, write only after confirmation (`approved=True`). Audit log entry created for every call, approved or not.
+
+**Embedding:** content hash tracked per note — only re-embeds when content changes (google/gemini-embedding-2 via LiteLLM proxy).
+
+**Key files:** `TOOLS.md` (tool reference and workflow patterns).
 
 **Channel:** `#learning`
 

@@ -1,0 +1,15 @@
+{
+  "id": "c30410e0",
+  "subsystem": "skills",
+  "action": "patch",
+  "summary": "patch 'youtube-content' SKILL.md (+26/-6 lines)",
+  "origin": "background_review",
+  "created_at": 1782606619.5124624,
+  "payload": {
+    "action": "patch",
+    "name": "youtube-content",
+    "old_string": "## Error Handling\n\n- **Transcript disabled**: tell the user; suggest they check if subtitles are available on the video page.\n- **Private/unavailable video**: relay the error and ask the user to verify the URL.\n- **No matching language**: retry without `--language` to fetch any available transcript, then note the actual language to the user.\n- **Dependency missing**: run `uv pip install youtube-transcript-api` and retry.",
+    "new_string": "## Error Handling\n\n- **Transcript disabled**: tell the user; suggest they check if subtitles are available on the video page.\n- **Private/unavailable video**: relay the error and ask the user to verify the URL.\n- **No matching language**: retry without `--language` to fetch any available transcript, then note the actual language to the user.\n- **Dependency missing**: run `uv pip install youtube-transcript-api` and retry.\n- **IP blocked / request blocked**: YouTube blocks cloud provider IPs (AWS, GCP, Azure, etc.). The script will fail with a clear message about this. Do NOT retry — move to the fallback workflow below.\n\n## Fallback Workflow (when transcript API is blocked)\n\nUse this when `youtube-transcript-api` fails due to IP blocking. The fallback uses browser tools + third-party summary aggregators.\n\n1. **Navigate to the YouTube page** with `browser_navigate(url)`. You'll get the title, channel, and subscriber count. Note: bot detection overlays may block full description expansion.\n\n2. **Extract chapters** from the YouTube page metadata — they're often visible in the HTML even when the description is truncated. Check via `browser_console(expression='document.querySelector(...)')`.\n\n3. **Search for third-party summaries**. Try these sites in order:\n   - `summarizeyoutubevideo.com/video/<slug>-<VIDEO_ID>` — e.g. `https://summarizeyoutubevideo.com/video/the-most-misunderstood-concept-in-physics-DxL2HoqLbyA`. Navigate with browser, scroll down to reveal full content.\n   - `bookyube.com` — structured chapter-by-chapter summaries.\n   - `glasp.co/youtube/p/<slug>` — note: may be Cloudflare-protected; skip if blocked.\n\n4. **Search the web** for the video title + \"summary\" or \"key points\" to find blog posts and write-ups.\n\n5. **Synthesize**: merge what you got from chapters, third-party summaries, and web search into the requested output format. Always cite key timestamps from the chapters section.\n\n6. **Verify**: check that the final output is coherent, has timestamps matching the chapter list, and covers all major sections identified.",
+    "replace_all": false
+  }
+}

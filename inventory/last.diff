@@ -1,13 +1,14 @@
 === SOFTWARE CHANGES ===
 
 === SERVICE CHANGES ===
---- /home/vazir/.nizam-os/inventory/services.txt	2026-06-28 09:39:29.693328437 +0000
-+++ /tmp/tmp.LjNKOSbDHf	2026-06-28 10:00:06.585317529 +0000
-@@ -9,6 +9,7 @@
+--- /home/vazir/.nizam-os/inventory/services.txt	2026-06-28 21:00:06.619836461 +0000
++++ /tmp/tmp.RVIKEeJFBR	2026-06-29 16:00:06.348723100 +0000
+@@ -4,7 +4,7 @@
+ hermes-gateway-admin.service | user | active
+ hermes-gateway-assistant.service | user | inactive
+ hermes-gateway-cos.service | user | inactive
+-hermes-gateway-curator.service | user | failed
++hermes-gateway-curator.service | user | active
+ hermes-profile-watcher.service | user | active
  litellm-proxy.service | system | active
  metrics-llm.timer | system | active
- metrics-services.timer | system | active
-+metrics-toolcalls.timer | system | active
- postgresql.service | system | active
- prometheus-node-exporter.service | system | active
- prometheus.service | system | active

@@ -1,4 +1,13 @@
 model_list:
+  # Explicit entry for cost tracking on embedding calls.
+  - model_name: "google/gemini-embedding-2"
+    litellm_params:
+      model: "openrouter/google/gemini-embedding-2"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
   - model_name: "*"
     litellm_params:
       model: "openrouter/*"

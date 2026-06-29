@@ -6,13 +6,27 @@ model:
 providers: {}
 fallback_providers: []
 custom_providers:
-  - name: litellm
-    base_url: http://localhost:4000
-    key_env: LITELLM_MASTER_KEY
-    api_mode: chat/completions
+- name: litellm
+  base_url: http://localhost:4000
+  key_env: LITELLM_MASTER_KEY
+  api_mode: chat/completions
 credential_pool_strategies: {}
 toolsets:
 - hermes-cli
+mcp_servers:
+  knowledge:
+    command: /home/vazir/.local/bin/uv
+    args:
+    - run
+    - --directory
+    - /home/vazir/.nizam-os/services/knowledge-service
+    - --env-file
+    - /home/vazir/.nizam-os/secrets/nizam.env
+    - python
+    - server.py
+    tools:
+      prompts: false
+      resources: false
 max_concurrent_sessions: null
 agent:
   max_turns: 150
@@ -32,7 +46,18 @@ agent:
   gateway_notify_interval: 180
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
-  disabled_toolsets: []
+  disabled_toolsets:
+  - browser
+  - code_execution
+  - cronjob
+  - delegation
+  - file
+  - image_gen
+  - terminal
+  - todo
+  - tts
+  - vision
+  - web
 terminal:
   backend: local
   modal_mode: auto
@@ -561,6 +586,7 @@ sessions:
 onboarding:
   seen:
     profile_build_offered: true
+    busy_input_prompt: true
   profile_build: ask
 updates:
   pre_update_backup: true
