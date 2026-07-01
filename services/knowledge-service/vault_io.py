@@ -7,7 +7,7 @@ import unicodedata
 import frontmatter
 import yaml
 
-VAULT_ROOT = os.environ.get("VAULT_ROOT", os.path.expanduser("~/.nizam-vault"))
+VAULT_ROOT = os.environ.get("VAULT_ROOT", os.path.expanduser("~/nizam-vault"))
 COMMONS_DIR = os.path.join(VAULT_ROOT, "commons")
 
 DOMAINS = {

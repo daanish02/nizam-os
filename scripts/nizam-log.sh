@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-SCRIPTS_LOG="$HOME/.nizam-os/logs/scripts.log"
+SCRIPTS_LOG="$HOME/nizam-os/logs/scripts.log"
 JFMT="--output=short-iso"
 
 sep() { printf '\n\033[1;34m══ %s ══\033[0m\n' "$1"; }

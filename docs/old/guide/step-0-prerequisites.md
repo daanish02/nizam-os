@@ -1,7 +1,7 @@
 # Step 0 — Prerequisites
 
 Everything that must be on the server before Step 1.  
-Machine-level setup (shell, git, monitoring stack, Tailscale) is in `~/.nizam-dotfiles/docs/startup-guide.md` — do that first.
+Machine-level setup (shell, git, monitoring stack, Tailscale) is in `~/nizam-dotfiles/docs/startup-guide.md` — do that first.
 
 ---
 
@@ -73,19 +73,19 @@ Set up nizam.env before Step 1 — LiteLLM needs its credentials to start.
 
 ```bash
 # Generate age key — back this up (Bitwarden + encrypted USB)
-age-keygen -o ~/.nizam-os/secrets/nizam-age-key.txt
-chmod 600 ~/.nizam-os/secrets/nizam-age-key.txt
+age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
+chmod 600 ~/nizam-os/secrets/nizam-age-key.txt
 
 # Tell sops where the key lives (add to ~/.zshrc)
-echo 'export SOPS_AGE_KEY_FILE=~/.nizam-os/secrets/nizam-age-key.txt' >> ~/.zshrc
+echo 'export SOPS_AGE_KEY_FILE=~/nizam-os/secrets/nizam-age-key.txt' >> ~/.zshrc
 source ~/.zshrc
 ```
 
 Fill in credentials:
 
 ```bash
-cp ~/.nizam-os/secrets/nizam.env.example ~/.nizam-os/secrets/nizam.env
-nano ~/.nizam-os/secrets/nizam.env
+cp ~/nizam-os/secrets/nizam.env.example ~/nizam-os/secrets/nizam.env
+nano ~/nizam-os/secrets/nizam.env
 ```
 
 | Key | Where to get |
@@ -97,7 +97,7 @@ nano ~/.nizam-os/secrets/nizam.env
 
 ```bash
 # Encrypt and commit the encrypted copy
-~/.nizam-os/scripts/encrypt-env.sh
+~/nizam-os/scripts/encrypt-env.sh
 ```
 
 ---
@@ -105,8 +105,8 @@ nano ~/.nizam-os/secrets/nizam.env
 ## Database
 
 ```bash
-source ~/.nizam-os/secrets/nizam.env
-bash ~/.nizam-os/scripts/setup/setup-db.sh
+source ~/nizam-os/secrets/nizam.env
+bash ~/nizam-os/scripts/setup/setup-db.sh
 ```
 
 ---
@@ -137,10 +137,10 @@ sudo grep shared_preload_libraries /etc/postgresql/16/main/postgresql.conf
 sudo journalctl -u postgresql -n 10 --no-pager | grep -i "error\|pg_search"
 
 # sops can't find key
-echo $SOPS_AGE_KEY_FILE             # must point to ~/.nizam-os/secrets/nizam-age-key.txt
+echo $SOPS_AGE_KEY_FILE             # must point to ~/nizam-os/secrets/nizam-age-key.txt
 ls -la "$SOPS_AGE_KEY_FILE"         # must exist, chmod 600
 
 # sops decrypt fails ("no age identity found")
-age-keygen -y ~/.nizam-os/secrets/nizam-age-key.txt   # prints public key
-head -3 ~/.nizam-os/secrets/nizam.env.enc              # first line shows recipient key — must match above
+age-keygen -y ~/nizam-os/secrets/nizam-age-key.txt   # prints public key
+head -3 ~/nizam-os/secrets/nizam.env.enc              # first line shows recipient key — must match above
 ```

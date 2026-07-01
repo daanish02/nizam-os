@@ -190,7 +190,7 @@ DISCORD_ADMIN_WEBHOOK=https://discord.com/api/webhooks/...
 python3 scripts/save/setup-profile-governance.py --all
 
 # 3. Install and start the watcher
-ln -sf /home/vazir/.nizam-os/systemd/user/hermes-skill-watcher.service ~/.config/systemd/user/
+ln -sf /home/vazir/nizam-os/systemd/user/hermes-skill-watcher.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now hermes-skill-watcher.service
 ```

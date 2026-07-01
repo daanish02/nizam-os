@@ -19,9 +19,9 @@ mcp_servers:
     args:
     - run
     - --directory
-    - /home/vazir/.nizam-os/services/knowledge-service
+    - /home/vazir/nizam-os/services/knowledge-service
     - --env-file
-    - /home/vazir/.nizam-os/secrets/nizam.env
+    - /home/vazir/nizam-os/secrets/nizam.env
     - python
     - server.py
     tools:

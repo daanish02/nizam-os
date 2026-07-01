@@ -7,7 +7,7 @@
 #   encrypt-profile-env.sh                 all profiles in hermes/profiles/
 set -euo pipefail
 
-NIZAM_OS="$HOME/.nizam-os"
+NIZAM_OS="$HOME/nizam-os"
 PROFILES="$NIZAM_OS/hermes/profiles"
 export SOPS_AGE_KEY_FILE="$NIZAM_OS/secrets/nizam-age-key.txt"
 PUBKEY=$(grep "public key" "$SOPS_AGE_KEY_FILE" | awk '{print $NF}')

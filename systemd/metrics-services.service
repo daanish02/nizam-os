@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=oneshot
 User=vazir
-ExecStart=/bin/bash /home/vazir/.nizam-os/scripts/metrics-services.sh
+ExecStart=/bin/bash /home/vazir/nizam-os/scripts/metrics-services.sh
 
 [Install]
 WantedBy=multi-user.target

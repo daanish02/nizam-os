@@ -7,7 +7,7 @@
 #   decrypt-profile-env.sh                 all profiles in hermes/profiles/
 set -euo pipefail
 
-NIZAM_OS="$HOME/.nizam-os"
+NIZAM_OS="$HOME/nizam-os"
 SCRIPT_NAME="decrypt-profile-env"
 source "$NIZAM_OS/scripts/_log.sh"
 

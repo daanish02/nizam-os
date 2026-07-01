@@ -28,7 +28,7 @@ nizam-os/
 
 **`nizam-os` is the software.** If it stopped existing, Nizam stops working. Everything needed to run Nizam — agents, services, configs, metrics, dashboards, migrations — lives here.
 
-**`~/.nizam-dotfiles` is the machine.** Shell, git config, security monitoring, secrets. It makes the server behave the way you like; nizam-os is what runs on top of it.
+**`~/nizam-dotfiles` is the machine.** Shell, git config, security monitoring, secrets. It makes the server behave the way you like; nizam-os is what runs on top of it.
 
 Test: *Does this exist to run Nizam, or to run the server?*  
 Run Nizam → here. Run the server → dotfiles.

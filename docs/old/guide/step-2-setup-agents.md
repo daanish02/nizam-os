@@ -73,7 +73,7 @@ model:
 **`~/.hermes/.env`** — replace OpenRouter key with LiteLLM master key:
 ```bash
 # Hermes sends this as Bearer auth to LiteLLM proxy.
-# Real OpenRouter key lives in ~/.nizam-os/secrets/nizam.env, used by litellm-proxy.service.
+# Real OpenRouter key lives in ~/nizam-os/secrets/nizam.env, used by litellm-proxy.service.
 OPENROUTER_API_KEY=<LITELLM_MASTER_KEY from nizam.env>
 ```
 
@@ -125,11 +125,11 @@ This creates `~/.hermes/profiles/admin/` with a default SOUL.md.
 
 Wire it into nizam-os (nizam-os is source of truth for all profile files):
 ```bash
-bash ~/.nizam-os/scripts/setup/wire-hermes-profile.sh admin
+bash ~/nizam-os/scripts/setup/wire-hermes-profile.sh admin
 ```
 
 This migrates SOUL.md, config.yaml, .env, skills/, and memories/ from `~/.hermes/profiles/admin/`
-into `~/.nizam-os/hermes/profiles/admin/` and replaces each with a symlink back.
+into `~/nizam-os/hermes/profiles/admin/` and replaces each with a symlink back.
 Edit any file in nizam-os → git commit → `hermes gateway restart`. No copy step.
 
 Set admin as the active profile:
@@ -208,7 +208,7 @@ admin gateway restart
 
 ## 11. Add to Inventory
 
-`~/.nizam-os/inventory/tracked-services.txt` — add each profile gateway:
+`~/nizam-os/inventory/tracked-services.txt` — add each profile gateway:
 ```
 hermes-gateway-admin.service
 hermes-gateway-assistant.service
@@ -244,8 +244,8 @@ hermes profile create assistant
 assistant setup
 
 # 3. wire into nizam-os (migrates SOUL.md, config.yaml, .env, skills/, memories/ → nizam-os, symlinks back)
-bash ~/.nizam-os/scripts/setup/wire-hermes-profile.sh assistant
-# logs to ~/.nizam-os/logs/scripts.log — check it if anything looks silently skipped
+bash ~/nizam-os/scripts/setup/wire-hermes-profile.sh assistant
+# logs to ~/nizam-os/logs/scripts.log — check it if anything looks silently skipped
 
 # 4. install and start its gateway
 assistant gateway install
@@ -261,7 +261,7 @@ journalctl --user -u hermes-gateway-assistant -n 20 --no-pager
 ```bash
 hermes profile create cos
 cos setup
-bash ~/.nizam-os/scripts/setup/wire-hermes-profile.sh cos
+bash ~/nizam-os/scripts/setup/wire-hermes-profile.sh cos
 cos gateway install
 cos gateway start
 cos gateway status
@@ -271,6 +271,6 @@ cos gateway status
 
 - Each profile gets its own systemd service: `hermes-gateway-<name>`
 - `hermes gateway list` shows all installed gateways and their status
-- `~/.hermes/profiles/<name>/` files that nizam-os manages (SOUL.md, config.yaml, .env, skills/, memories/) become symlinks into `~/.nizam-os/hermes/profiles/<name>/` after wiring — git-tracked, edit in nizam-os
+- `~/.hermes/profiles/<name>/` files that nizam-os manages (SOUL.md, config.yaml, .env, skills/, memories/) become symlinks into `~/nizam-os/hermes/profiles/<name>/` after wiring — git-tracked, edit in nizam-os
 - Runtime files hermes writes (sessions, logs, cache, state.db, etc.) stay as real files in `~/.hermes/profiles/<name>/` — nizam-os never touches them
 - **Never run `wire-hermes-profile.sh` without a profile name arg during active sessions** — it processes all profiles and will briefly interrupt running gateways that hold files open

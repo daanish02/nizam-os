@@ -3,7 +3,7 @@
 # Source this file — set SCRIPT_NAME first, then call log_info / log_warn / log_error.
 # Override log path: NIZAM_LOG=/path/to/other.log source _log.sh
 
-NIZAM_LOG="${NIZAM_LOG:-$HOME/.nizam-os/logs/scripts.log}"
+NIZAM_LOG="${NIZAM_LOG:-$HOME/nizam-os/logs/scripts.log}"
 mkdir -p "$(dirname "$NIZAM_LOG")"
 
 _nizam_log() {

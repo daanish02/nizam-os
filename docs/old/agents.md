@@ -88,7 +88,7 @@ Personal assistant. The most frequently used agent day-to-day. Knows finances, h
 
 ### Noor — curator
 
-Knowledge curator. Maintains `~/.nizam-vault/commons/` — flat, structured, searchable knowledge base. Every write requires explicit user approval.
+Knowledge curator. Maintains `~/nizam-vault/commons/` — flat, structured, searchable knowledge base. Every write requires explicit user approval.
 
 **Responsibilities:**
 - Capture: given a URL, video, or concept → extract and create a tagged note

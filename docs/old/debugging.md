@@ -9,12 +9,12 @@ Quick-reference for diagnosing any part of the stack. Work top-down: infra → p
 Single command that shows system services → agent gateways → one-shot scripts in sequence:
 
 ```bash
-bash ~/.nizam-os/scripts/nizam-log.sh            # last 30 lines per section
-bash ~/.nizam-os/scripts/nizam-log.sh -n 100     # last 100 lines per section
-bash ~/.nizam-os/scripts/nizam-log.sh -f         # follow system journal live
-bash ~/.nizam-os/scripts/nizam-log.sh -s agents  # agents only
-bash ~/.nizam-os/scripts/nizam-log.sh -s scripts # one-shot scripts only
-bash ~/.nizam-os/scripts/nizam-log.sh -s metrics # metrics-llm only
+bash ~/nizam-os/scripts/nizam-log.sh            # last 30 lines per section
+bash ~/nizam-os/scripts/nizam-log.sh -n 100     # last 100 lines per section
+bash ~/nizam-os/scripts/nizam-log.sh -f         # follow system journal live
+bash ~/nizam-os/scripts/nizam-log.sh -s agents  # agents only
+bash ~/nizam-os/scripts/nizam-log.sh -s scripts # one-shot scripts only
+bash ~/nizam-os/scripts/nizam-log.sh -s metrics # metrics-llm only
 ```
 
 Sections: `system` | `agents` | `scripts` | `metrics`
@@ -25,16 +25,16 @@ Sections: `system` | `agents` | `scripts` | `metrics`
 
 Scripts sourcing `_log.sh` (wire-hermes-profile, watch-inventory, metrics-services, etc.) write to:
 ```
-~/.nizam-os/logs/scripts.log
+~/nizam-os/logs/scripts.log
 ```
 
 Format: `TIMESTAMP [LEVEL] [script-name] message`
 
 ```bash
-tail -f ~/.nizam-os/logs/scripts.log      # follow live
-tail -n 50 ~/.nizam-os/logs/scripts.log   # last 50 lines
-grep WARN ~/.nizam-os/logs/scripts.log    # warnings only
-grep ERROR ~/.nizam-os/logs/scripts.log   # errors only
+tail -f ~/nizam-os/logs/scripts.log      # follow live
+tail -n 50 ~/nizam-os/logs/scripts.log   # last 50 lines
+grep WARN ~/nizam-os/logs/scripts.log    # warnings only
+grep ERROR ~/nizam-os/logs/scripts.log   # errors only
 ```
 
 Rotated daily, 14 days kept, by logrotate. Config: `config/logrotate.nizam`.
@@ -132,7 +132,7 @@ curl -s http://localhost:4000/health/liveliness    # expect: {"status":"healthy"
 curl -s http://localhost:4000/health/readiness
 
 # Test a call (replace LITELLM_MASTER_KEY)
-source ~/.nizam-os/secrets/nizam.env
+source ~/nizam-os/secrets/nizam.env
 curl -s -X POST http://localhost:4000/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
@@ -198,7 +198,7 @@ journalctl --user -u hermes-gateway-<name> -f    # follow live
 # Restart a gateway
 <name> gateway restart
 
-# Check profile symlinks are correct (should all show -> /home/vazir/.nizam-os/...)
+# Check profile symlinks are correct (should all show -> /home/vazir/nizam-os/...)
 ls -la ~/.hermes/profiles/<name>/
 ```
 
@@ -235,7 +235,7 @@ Manual triggers:
 
 ```bash
 # watcher-inventory — check last generated
-cat ~/.nizam-os/inventory/services.txt && ls -la ~/.nizam-os/inventory/
+cat ~/nizam-os/inventory/services.txt && ls -la ~/nizam-os/inventory/
 
 # metrics-services — trigger and verify
 sudo systemctl start metrics-services.service && cat /var/lib/prometheus/node-exporter/nizam-services.prom
@@ -265,8 +265,8 @@ ls -la ~/.config/systemd/user/hermes-profile-watcher.service
 
 # Verify hermes profile symlinks for a given profile
 ls -la ~/.hermes/profiles/admin/
-# .env, config.yaml, *.md should be -> /home/vazir/.nizam-os/...
-# skills/ and memories/ should be -> /home/vazir/.nizam-os/...
+# .env, config.yaml, *.md should be -> /home/vazir/nizam-os/...
+# skills/ and memories/ should be -> /home/vazir/nizam-os/...
 ```
 
 ---
@@ -278,11 +278,11 @@ ls -la ~/.hermes/profiles/admin/
 | Service stuck in `failed` | `sudo systemctl reset-failed <unit> && sudo systemctl start <unit>` |
 | Changed a systemd unit file | `sudo systemctl daemon-reload && sudo systemctl restart <unit>` |
 | Changed user service | `systemctl --user daemon-reload && systemctl --user restart <unit>` |
-| metrics-llm writes only `proxy_up 1`, no other metrics | Check `LITELLM_MASTER_KEY` in `~/.nizam-os/secrets/nizam.env` (loaded via `EnvironmentFile`) |
+| metrics-llm writes only `proxy_up 1`, no other metrics | Check `LITELLM_MASTER_KEY` in `~/nizam-os/secrets/nizam.env` (loaded via `EnvironmentFile`) |
 | Grafana dashboard shows "No data" | Check Prometheus datasource UID is `nizam-prometheus`; check `nizam_llm_proxy_up` query in Prometheus UI |
 | Hermes gateway not connecting to Discord | `journalctl --user -u hermes-gateway-<name> -f` — usually bad `DISCORD_BOT_TOKEN` or missing Privileged Intents |
-| Profile files not symlinking | Run `bash ~/.nizam-os/scripts/setup/wire-hermes-profile.sh <name>` |
-| `.env.enc` out of date | `bash ~/.nizam-os/scripts/encrypt-profile-env.sh <name>` — or just edit the `.env` and the watcher auto-encrypts |
+| Profile files not symlinking | Run `bash ~/nizam-os/scripts/setup/wire-hermes-profile.sh <name>` |
+| `.env.enc` out of date | `bash ~/nizam-os/scripts/encrypt-profile-env.sh <name>` — or just edit the `.env` and the watcher auto-encrypts |
 
 ---
 

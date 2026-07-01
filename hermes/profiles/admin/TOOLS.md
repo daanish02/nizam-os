@@ -5,8 +5,8 @@
 - **systemd** — `systemctl status`, `is-active`, `list-units`
 - **Logs** — `journalctl -u <service>`, files in `/var/log/`
 - **All agent profiles** — `~/.hermes/profiles/*/` (SOUL.md, config.yaml, memories/, skills/, logs/)
-- **nizam-os** — `~/.nizam-os/` — all files including inventory, scripts, grafana, docs
-- **nizam-dotfiles** — `~/.nizam-dotfiles/` — all files
+- **nizam-os** — `~/nizam-os/` — all files including inventory, scripts, grafana, docs
+- **nizam-dotfiles** — `~/nizam-dotfiles/` — all files
 - **Prometheus textfiles** — `/var/lib/prometheus/node-exporter/*.prom`
 - **System resources** — disk (`df`), memory (`free`), load (`uptime`), network (`ss`, `netstat`)
 

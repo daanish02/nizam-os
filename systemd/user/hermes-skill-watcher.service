@@ -4,8 +4,8 @@ After=default.target
 
 [Service]
 Type=simple
-EnvironmentFile=/home/vazir/.nizam-os/secrets/nizam.env
-ExecStart=/home/vazir/.local/bin/uv run /home/vazir/.nizam-os/scripts/save/pending-watcher.py
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/save/pending-watcher.py
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

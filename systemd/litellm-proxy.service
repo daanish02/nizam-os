@@ -8,10 +8,10 @@ Requires=postgresql.service redis-server.service
 Type=simple
 User=vazir
 Group=vazir
-WorkingDirectory=/home/vazir/.nizam-os
-EnvironmentFile=/home/vazir/.nizam-os/secrets/nizam.env
+WorkingDirectory=/home/vazir/nizam-os
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
 ExecStart=/home/vazir/.local/bin/litellm \
-    --config /home/vazir/.nizam-os/config/litellm.yaml \
+    --config /home/vazir/nizam-os/config/litellm.yaml \
     --port 4000 \
     --num_workers 1
 Restart=on-failure

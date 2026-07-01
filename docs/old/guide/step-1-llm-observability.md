@@ -15,7 +15,7 @@ systemctl is-active postgresql redis-server prometheus prometheus-node-exporter 
 
 Also required:
 - `uv` installed (`which uv`)
-- `~/.nizam-dotfiles/` repo present (machine config — shell, security monitoring)
+- `~/nizam-dotfiles/` repo present (machine config — shell, security monitoring)
 - OpenRouter API key (from openrouter.ai)
 - Bitwarden (to store generated secrets)
 
@@ -24,7 +24,7 @@ Also required:
 ## 1. uv Workspace
 
 ```bash
-cd ~/.nizam-os
+cd ~/nizam-os
 uv init --no-package
 echo "3.12" > .python-version
 uv lock
@@ -53,7 +53,7 @@ Key decisions:
 
 ## 3. Secrets
 
-File: `~/.nizam-os/secrets/nizam.env` (plaintext, gitignored, encrypted copy tracked as `nizam.env.enc`)
+File: `~/nizam-os/secrets/nizam.env` (plaintext, gitignored, encrypted copy tracked as `nizam.env.enc`)
 
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...         # from openrouter.ai dashboard
@@ -130,7 +130,7 @@ psql "postgresql://svc_litellm:<password>@127.0.0.1:5432/nizam" -c "\dt litellm.
 
 ## 7. Systemd Units + Symlinks
 
-Units live in `~/.nizam-os/systemd/`. Deployed via symlinks into `/etc/systemd/system/` — originals stay in the repo, system reads through the symlink.
+Units live in `~/nizam-os/systemd/`. Deployed via symlinks into `/etc/systemd/system/` — originals stay in the repo, system reads through the symlink.
 
 > Same pattern as existing dotfiles services (`metrics-security`, `watcher-*`). Keeps all config in git, no manual copy step on updates.
 
@@ -217,7 +217,7 @@ curl -s "http://localhost:9090/api/v1/query?query=nizam_llm_proxy_up" | python3 
    - UID: `nizam-prometheus`
    - Save & test → should show green
 
-2. **Dashboard**: Dashboards → New → Import → upload `~/.nizam-os/grafana/agents-dashboard.json`
+2. **Dashboard**: Dashboards → New → Import → upload `~/nizam-os/grafana/agents-dashboard.json`
 
 Verify in dashboard:
 - `Proxy Status` panel shows **UP**
@@ -247,7 +247,7 @@ curl -s "http://localhost:9090/api/v1/label/model/values" | python3 -m json.tool
 
 ## Inventory
 
-New entries added to `~/.nizam-os/inventory/tracked-services.txt`:
+New entries added to `~/nizam-os/inventory/tracked-services.txt`:
 ```
 # Nizam-OS — LLM Gateway
 litellm-proxy.service
@@ -276,7 +276,7 @@ sudo systemctl show litellm-proxy -p Environment
 
 ```bash
 # Confirm key matches what's in nizam.env
-source ~/.nizam-os/secrets/nizam.env
+source ~/nizam-os/secrets/nizam.env
 curl -s http://localhost:4000/health/liveliness -H "Authorization: Bearer $LITELLM_MASTER_KEY"
 
 # Check OpenRouter key is valid
@@ -291,7 +291,7 @@ curl -s https://openrouter.ai/api/v1/models \
 sudo systemctl cat metrics-llm.service | grep -i key
 
 # Run manually with key to see Python errors
-source ~/.nizam-os/secrets/nizam.env
+source ~/nizam-os/secrets/nizam.env
 sudo -E LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY uv run scripts/metrics-llm.py
 
 # Check LiteLLM spend API directly
@@ -336,7 +336,7 @@ sudo journalctl -u grafana-server -n 20 --no-pager | grep -i "error\|datasource"
 # Regenerate prisma schema (run after litellm upgrade too)
 SCHEMA=/home/vazir/.local/share/uv/tools/litellm/lib/python3.12/site-packages/litellm/proxy/schema.prisma
 export PATH="/home/vazir/.local/share/uv/tools/litellm/bin:$PATH"
-source ~/.nizam-os/secrets/nizam.env
+source ~/nizam-os/secrets/nizam.env
 
 DATABASE_URL="postgresql://svc_litellm:$LITELLM_DB_PASSWORD@127.0.0.1:5432/nizam?schema=litellm" \
   prisma db push --schema="$SCHEMA" --accept-data-loss

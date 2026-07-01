@@ -71,7 +71,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     You->>+Bani: #admin — deploy finance-service changes
-    Bani->>Bani: git -C ~/.nizam-os pull
+    Bani->>Bani: git -C ~/nizam-os pull
     Bani->>Bani: uv sync --project services/finance-service
     Bani->>Bani: sudo systemctl restart finance-service
     Bani->>Bani: systemctl is-active finance-service
