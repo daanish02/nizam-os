@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-07-01
 
-All env vars: purpose, consumer, where stored, how to rotate. For rotation procedures see `docs/RUNBOOK.md`.
+All env vars: purpose, consumer, where stored. Rotation procedures: `docs/RUNBOOK.md`.
 
 ---
 
@@ -25,20 +25,20 @@ Encryption: sops + age keypair. Scripts: `scripts/encrypt-env.sh`, `scripts/decr
 
 ## `secrets/nizam.env` — shared system vars
 
-| Variable | Purpose | Consumer(s) | Rotation |
-|---|---|---|---|
-| `OPENROUTER_API_KEY` | Auth for OpenRouter API | LiteLLM proxy (`litellm-proxy.service`) | Generate new key at openrouter.ai → Settings → API Keys. Update nizam.env. Restart litellm-proxy. |
-| `LITELLM_MASTER_KEY` | LiteLLM admin operations (create virtual keys, view spend) | `setup-litellm-keys.sh`, any direct LiteLLM API call | Set once. Rotate by updating nizam.env + restarting litellm-proxy + re-running setup-litellm-keys.sh. |
-| `LITELLM_DB_PASSWORD` | PostgreSQL password for `svc_litellm` role | LiteLLM proxy (via `LITELLM_DB_URL`) | `ALTER ROLE svc_litellm WITH PASSWORD 'new'` in psql. Update LITELLM_DB_PASSWORD and LITELLM_DB_URL. Restart litellm-proxy. |
-| `LITELLM_DB_URL` | Full DSN: `postgresql://svc_litellm:<pass>@localhost/nizam` | LiteLLM proxy | Rebuild from updated LITELLM_DB_PASSWORD. |
-| `DATABASE_URL` | Legacy alias for LITELLM_DB_URL | Unused or same as LITELLM_DB_URL | Same as LITELLM_DB_URL. |
-| `POSTGRES_SVC_KNOWLEDGE_PASS` | PostgreSQL password for `svc_knowledge` role | `knowledge-service` (via ServiceBase) | `ALTER ROLE svc_knowledge WITH PASSWORD 'new'` in psql. Update nizam.env. Restart knowledge-service. |
-| `VAULT_ROOT` | Path to nizam-vault directory | `knowledge-service` (vault_io.py) | Default: `~/nizam-vault`. Override only if vault moves. |
-| `REDIS_URL` | Redis DSN: `redis://localhost:6379/0` | LiteLLM proxy (cache), `nizam-shared` ServiceBase | Typically static. Change only if Redis port changes. |
-| `DISCORD_ADMIN_WEBHOOK` | Webhook URL for admin/alert notifications | `scripts/watch-inventory.sh`, admin alerting | Regenerate in Discord: channel settings → Integrations → Webhooks. |
-| `YOUTUBE_API_KEY` | YouTube Data API v3 key | `knowledge-service` transcript.py (Tier 3 fallback) | Generate at console.cloud.google.com → Credentials. 10,000 units/day free tier. |
-| `YOUTUBE_COOKIES_FILE` | Path to `cookies.txt` for yt-dlp auth | `knowledge-service` transcript.py (Tier 2) | Re-export cookies from browser if yt-dlp starts getting 429s. |
-| `NIZAM_INVENTORY_WATCHER` | Discord webhook for inventory-change notifications | `scripts/watch-inventory.sh` | **Missing from nizam.env.example — add on rebuild.** Same rotation as DISCORD_ADMIN_WEBHOOK. |
+| Variable | Purpose | Consumer(s) |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Auth for OpenRouter API | LiteLLM proxy (`litellm-proxy.service`) |
+| `LITELLM_MASTER_KEY` | LiteLLM admin operations (create virtual keys, view spend) | `setup-litellm-keys.sh`, any direct LiteLLM API call |
+| `LITELLM_DB_PASSWORD` | PostgreSQL password for `svc_litellm` role | LiteLLM proxy (via `LITELLM_DB_URL`) |
+| `LITELLM_DB_URL` | Full DSN: `postgresql://svc_litellm:<pass>@localhost/nizam` | LiteLLM proxy |
+| `DATABASE_URL` | Legacy alias for LITELLM_DB_URL | Unused or same as LITELLM_DB_URL |
+| `POSTGRES_SVC_KNOWLEDGE_PASS` | PostgreSQL password for `svc_knowledge` role | `knowledge-service` (via ServiceBase) |
+| `VAULT_ROOT` | Path to nizam-vault directory (`~/nizam-vault`) | `knowledge-service` (vault_io.py) |
+| `REDIS_URL` | Redis DSN: `redis://localhost:6379/0` | LiteLLM proxy (cache), `nizam-shared` ServiceBase |
+| `DISCORD_ADMIN_WEBHOOK` | Webhook URL for admin/alert notifications | `scripts/watch-inventory.sh`, admin alerting |
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key | `knowledge-service` transcript.py (Tier 3 fallback) |
+| `YOUTUBE_COOKIES_FILE` | Path to `cookies.txt` for yt-dlp auth | `knowledge-service` transcript.py (Tier 2) |
+| `NIZAM_INVENTORY_WATCHER` | Discord webhook for inventory-change notifications — **missing from nizam.env.example, add on rebuild** | `scripts/watch-inventory.sh` |
 
 ### Vars added in Curator v1
 
@@ -73,13 +73,7 @@ Same structure for all profiles. Values differ per profile.
 | `DISCORD_GUILD_ID` | Discord server (guild) snowflake ID | Same value across all profiles — same server. |
 | `LITELLM_MASTER_KEY` | This profile's LiteLLM virtual key | Created by `setup-litellm-keys.sh`. `user_id` = profile name → per-agent spend tracking. |
 
-### Rotate a Discord bot token
-
-1. discord.com/developers → Applications → select bot → Reset Token
-2. `bash scripts/decrypt-profile-env.sh <name>`
-3. Update `DISCORD_TOKEN` in `hermes/profiles/<name>/.env`
-4. `bash scripts/encrypt-profile-env.sh <name>`
-5. Restart the gateway: `hermes gateway stop <name> && hermes gateway start <name>`
+For rotation procedures (Discord token, nizam.env vars, LiteLLM keys) see `docs/RUNBOOK.md` → Secrets.
 
 ---
 

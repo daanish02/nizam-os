@@ -139,20 +139,9 @@ approvals:
 | Reem | Yes | `command_allowlist` (read-only diagnostics only) |
 | All others | No | `terminal` toolset disabled |
 
-**Nazim `command_allowlist`:**
-```
-systemctl restart, journalctl, pg_isready, redis-cli ping
-```
-
-Sudo is scoped. `/etc/sudoers.d/nazim-hermes` grants NOPASSWD only for the specific `systemctl restart` commands Nazim needs. Not full sudo.
-
-**Reem `command_allowlist`:**
-```
-pytest, uv run pytest, mypy, ruff check, ruff format --check,
-git log, git diff, git status, journalctl -u, systemctl is-active
-```
-
-No restarts. No package installs. No deployments. Read-only diagnostics only.
+Exact `command_allowlist` values for Nazim and Reem are in `docs/AGENTS.md` (authoritative). Summary:
+- Nazim: service restart + diagnostics only. Sudo scoped via `/etc/sudoers.d/nazim-hermes` — not full sudo.
+- Reem: read-only diagnostics only. No restarts, no installs, no deployments.
 
 Any command not in the allowlist requires manual Discord approval before execution.
 

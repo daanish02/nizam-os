@@ -28,25 +28,7 @@ Files are symlinked from `hermes/profiles/<name>/` into `~/.hermes/profiles/<nam
 
 ## Profile lifecycle
 
-```bash
-# Create
-hermes profile create <name> --description "<one-line role>"
-
-# Wire into nizam-os
-bash scripts/setup/wire-hermes-profile.sh <name>
-
-# Start gateway (Discord bot)
-hermes gateway start <name>
-
-# Stop gateway
-hermes gateway stop <name>
-
-# List all profiles
-hermes profile list
-
-# List active gateways
-hermes gateway list
-```
+Gateway and profile commands (create, wire, start, stop, list): `docs/RUNBOOK.md` → Hermes gateways and Adding a new agent profile.
 
 ---
 
@@ -124,19 +106,13 @@ To disable everything not listed: add unwanted toolsets to `agent.disabled_tools
 
 ```yaml
 command_allowlist:
-  - pytest
-  - uv run pytest
-  - mypy
-  - ruff check
-  - ruff format --check
   - git log
   - git diff
-  - git status
-  - journalctl -u
   - systemctl is-active
+  # add only commands the agent's mandate explicitly requires
 ```
 
-Commands not in this list require manual Discord approval before execution. Applied to profiles with `terminal` enabled. Reem's allowlist is read-only diagnostics only. Nazim's allowlist adds `systemctl restart <specific-units>` (enforced via sudoers, not allowlist alone).
+Commands not in this list require manual Discord approval before execution. Keep lists minimal — each entry expands agent autonomy. Per-agent allowlists are in `docs/AGENTS.md`.
 
 ### MCP servers — HTTP transport (post Curator v1)
 

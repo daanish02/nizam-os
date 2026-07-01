@@ -2,7 +2,30 @@
 
 **Last updated:** 2026-07-01
 
-Day-to-day operations. Not initial setup (see `docs/plans/20260701-foundation.md`). All commands run as `vazir` unless noted.
+Day-to-day operations and procedures. All commands run as `vazir` unless noted.
+
+---
+
+## Fresh VPS rebuild
+
+Use this when starting from a bare Ubuntu VPS. Work through phases in order — each plan file contains the full task list for that phase.
+
+**Before anything else:** back up `secrets/nizam-age-key.txt` to an external location. Without it, all `.enc` files in the repo are unreadable.
+
+### Rebuild sequence
+
+| Phase | Plan file | Reference docs to keep open |
+|---|---|---|
+| 1 — Foundation | `docs/plans/20260701-foundation.md` | `docs/SECRETS.md`, `docs/SERVICES.md`, `docs/DISCORD.md` |
+| 2 — Immediate fixes | `docs/plans/20260701-immediate-fixes.md` | `docs/SECURITY.md`, `docs/AGENTS.md` |
+| 3 — Curator v1 | `docs/plans/20260701-curator-v1.md` | `docs/SCHEMAS.md`, `docs/HERMES.md` |
+| 4 — Admin v1 | `docs/plans/20260701-admin-v1.md` | `docs/AGENTS.md`, `docs/HERMES.md` |
+| 5 — Assistant v1 | `docs/plans/20260701-assistant-v1.md` | `docs/SCHEMAS.md`, `docs/INTEGRATIONS.md` |
+| 6a–6e — C-suite | per-agent plan (when written) | `docs/AGENTS.md`, `docs/SERVICES.md` |
+
+Start each phase by reading the spec (`docs/specs/`) for that phase — the plan references it for design rationale.
+
+For system architecture, read `docs/ARCHITECTURE.md` first.
 
 ---
 
@@ -129,6 +152,22 @@ bash scripts/encrypt-profile-env.sh curator
 ```
 
 Profile `.env` vars: `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `LITELLM_MASTER_KEY` (virtual key).
+
+### Refresh yt-dlp cookies
+
+If yt-dlp returns 429 or sign-in required:
+
+1. Export `cookies.txt` from a logged-in browser: `yt-dlp --cookies-from-browser chrome` or use a browser extension
+2. Update `YOUTUBE_COOKIES_FILE` path in `secrets/nizam.env`
+3. `watcher-env.service` auto-encrypts on save
+
+### Rotate a Discord bot token
+
+1. discord.com/developers → Applications → select bot → Reset Token
+2. `bash scripts/decrypt-profile-env.sh <name>`
+3. Update `DISCORD_TOKEN` in `hermes/profiles/<name>/.env`
+4. `bash scripts/encrypt-profile-env.sh <name>`
+5. `hermes gateway stop <name> && hermes gateway start <name>`
 
 ### Re-generate LiteLLM virtual keys
 

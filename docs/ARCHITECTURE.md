@@ -1,6 +1,6 @@
 # Nizam-OS — Architecture & Start Here
 
-> **How to use this document:** Read top to bottom. This is the primary reference for Claude Code sessions and Hermes agents. All design decisions are recorded here. Changes here flow into specs (`docs/specs/`) then plans (`docs/plans/`). Drill-down links at the bottom.
+> **How to use this document:** Read top to bottom. This is the primary reference for Claude Code sessions and Hermes agents. All design decisions are recorded here. Drill-down links at the bottom.
 
 ---
 
@@ -30,49 +30,21 @@ These apply to every task, every session, forever. Non-negotiable.
 
 ## Agent Roster
 
-| Agent | Persona | Discord channels | Domain | Status |
-|---|---|---|---|---|
-| **Nazim** | System admin | System category (`#admin`, `#alerts`, `#warning`, `#sandbox`) | Infrastructure health, incidents, restarts; Hermes guide | Live — rename Bani→Nazim pending |
-| **Noor** | Knowledge curator | `#learning` (Personal) | Vault ingestion: URLs, YouTube, PDF, images | Gateway active — tools non-functional (DB schema not set up) |
-| **Ayah** | Personal assistant | `#briefing`, `#finances`, `#goals`, `#chat` (Personal) | Daily briefings, expense logging, goals/tasks/habits/journal | Gateway inactive — services not built |
-| **Raha** | Chief of Staff | `#strategy` (Chairman's Office), `#boardroom`, `#biz-chat` (Arc Systems) | Business synthesis, weekly reviews, delegates to business agents | Gateway inactive — SOUL.md is placeholder |
-| **Hala** | CFO | `#cfo-office` (Arc Systems) | Business ledger, invoices, reconciliation | Not built |
-| **Omar** | COO | `#coo-office` (Arc Systems) | Operations, CRM, client relationships | Not built |
-| **Reem** | CTO | `#cto-office` (Arc Systems) | Codebase health, GitHub, technical decisions | Not built |
-| **Mira** | CMO | `#cmo-office` (Arc Systems) | Content strategy, campaigns, social performance | Not built |
+Eight agents across three Discord categories. Each owns a domain; each is a Hermes profile on the same VPS.
 
-**Access control:** each agent sees only its channels and only the MCP tools it needs. Access control details (channels, toolsets, MCP includes) are in each agent's individual spec.
+| Agent | Persona | Phase | Status |
+|---|---|---|---|
+| Nazim | System admin | 4 | In repo — rename Bani→Nazim pending |
+| Noor | Knowledge curator | 3 | In repo — tools non-functional (schema not run) |
+| Ayah | Personal assistant | 5 | In repo — stub profile |
+| Raha | Chief of Staff | 6a | In repo — stub profile |
+| Hala | CFO | 6b | Not built |
+| Omar | COO | 6c | Not built |
+| Reem | CTO | 6d | Not built |
+| Mira | CMO | 6e | Not built |
 
-### Discord server map
-
-```
-Start:             #vision, #server-map
-Personal:          #briefing, #finances, #goals, #learning, #chat
-System:            #alerts, #admin, #warning, #sandbox
-Chairman's Office: #strategy
-Arc Systems:       #biz-chat, #boardroom, #cfo-office, #cto-office, #coo-office, #cmo-office
-```
-
-### Nazim — detail
-
-Has access to the full System category, not just `#admin`. Also serves as the **Hermes guide**: if adding a new agent, new service, or new feature, Nazim can read the Hermes docs (available locally) and explain what is supported and how to wire it given current system state.
-
-### Ayah — channel design
-
-| Channel | Who drives it | What happens |
-|---|---|---|
-| `#briefing` | Ayah (cron) | **Morning:** spend summary, next 5 tasks, one quote. **Evening:** day's spend recap + journal thread prompt. User journals by replying in the thread — Ayah saves thread content as a journal entry. |
-| `#finances` | User | User posts expenses and income. Ayah logs them. No proactive messages here. |
-| `#goals` | Both | All structured tracking. Proactive posts on schedule: tasks (next 5, daily), projects (updates, less frequent), habits (check-in per repetition cadence), goals (weekly, frequency depends on scope). User adds/edits/deletes in this channel. |
-| `#chat` | User | General. Anything outside structured flows. |
-
-### Raha — delegation
-
-Raha delegates to Hala, Omar, Reem, and Mira. Delegation mode:
-- **Sync** — Raha needs the answer before continuing (blocks on sub-agent response)
-- **Async** — Raha fires the task and moves on (sub-agent replies in its own time)
-
-Hermes supports delegation via the `delegation` toolset. Verify sync/async support in Hermes official docs before implementing Raha.
+Per-agent channels, toolsets, MCP access, command allowlists, and key constraints: `docs/AGENTS.md`.
+Discord server structure and channel-to-agent map: `docs/DISCORD.md`.
 
 ---
 
@@ -93,10 +65,11 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
     │
     └── MCP servers (HTTP, localhost only)
             │
-            ├── knowledge-service  :8100  → knowledge schema (PostgreSQL)
-            ├── finance-service    :8101  → finance schema  (PostgreSQL)
-            ├── personal-service   :8102  → personal schema (PostgreSQL)
-            └── [future services]  :8103+
+            ├── knowledge-service  :8100  → knowledge schema       (PostgreSQL)
+            ├── finance-service    :8101  → finance + biz.finance  (PostgreSQL)
+            ├── personal-service   :8102  → personal schema        (PostgreSQL)
+            ├── crm-service        :8104  → crm schema             (PostgreSQL)
+            └── analytics-service  :8105  → analytics schema       (PostgreSQL)
                         │
                         └── audit.log (all services write here)
 ```
@@ -107,7 +80,7 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 
 - **LiteLLM as the model proxy.** All LLM calls route through LiteLLM → OpenRouter. Spend tracking, token counting, tool call logging, request/response latency, rate limiting, and caching happen at this layer.
 
-- **Caching is first-class.** LiteLLM enables two cache layers: exact cache (Redis key-match — identical prompts return instantly) and semantic cache (Redis + embeddings — similar prompts return without re-inference). Both are active. This reduces cost and latency at the most expensive point in the system.
+- **Caching is first-class.** LiteLLM enables two cache layers: exact cache (Redis key-match — identical prompts return instantly) and semantic cache (Redis + embeddings — similar prompts return without re-inference). Exact cache is active. Semantic cache is planned (`config/litellm.yaml`: "Semantic cache added later").
 
 - **`allow_lazy_installs: false`.** Hermes default allows agents to run `pip install` at runtime. This is disabled on all profiles. Every dependency must be declared in `pyproject.toml` and reviewed by the user. Agents cannot pull in packages silently.
 
@@ -123,131 +96,65 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 
 ## Services
 
-**Architecture principle:** Services and agents are independent. A service does not know or care which agent calls it. An agent does not own a service — it connects to an HTTP endpoint. One service can serve multiple agents (finance-service serves both Ayah and Hala with different tool filters). One agent can use multiple services. Capability is added by building a service, not by modifying an agent. The agent roster and service registry grow independently.
+**Architecture principle:** Services and agents are independent. A service does not know or care which agent calls it. One service can serve multiple agents with different tool filters. Capability is added by building a service, not by modifying an agent.
 
-| Service | Port | Status | Schema | Consumers |
-|---|---|---|---|---|
-| `knowledge-service` | 8100 | Code exists — DB not set up, non-functional | `knowledge` (needs redesign) | Noor |
-| `finance-service` | 8101 | Not built | `finance.personal_transactions` | Ayah, Hala (filtered) |
-| `personal-service` | 8102 | Not built | `personal.*` | Ayah |
-| `math-service` | 8103 | Planned | — | Any agent needing exact arithmetic |
-| `crm-service` | 8104 | Planned (Phase 4) | `crm` | Omar, Mira |
-| `social-service` | — | Planned (Phase 5) | — | Mira |
-| `analytics-service` | — | Planned (Phase 5) | — | Raha, Mira, Nazim |
+| Service | Port | Status |
+|---|---|---|
+| `knowledge-service` | 8100 | In repo — non-functional (schema not run) |
+| `finance-service` | 8101 | Specced |
+| `personal-service` | 8102 | Specced |
+| `crm-service` | 8104 | Planned |
+| `analytics-service` | 8105 | Planned |
 
-**math-service:** LLMs are unreliable at arithmetic and exact numeric precision (financial calculations, zakat, compound interest, statistics). math-service wraps a Python evaluation engine — agents pass an expression or structured request, get back a guaranteed-correct result. No LLM in the math path.
-
-**RAG strategies:** `knowledge-service` uses pgvector semantic search (embeddings) and ParadeDB full-text search (BM25). Both run inside PostgreSQL — no separate vector DB. Semantic search for concept similarity; full-text for exact phrase match. Hybrid re-ranking is supported. A future `research-service` (not yet specced) would run multi-step retrieval across vault and web and synthesize a briefing — distinct from ingestion (add to vault) and retrieval (query vault).
+Port map, tool signatures, consumer access matrix, approval workflows, and tunables: `docs/SERVICES.md`.
 
 ---
 
 ## Database
 
-Single PostgreSQL instance. **Current state: empty — no schemas, no tables, LiteLLM tables not set up.** Everything below is the target design.
+Single PostgreSQL instance. Each service connects as its own role — isolation enforced at the DB layer, not by convention.
 
-Each service has its own PostgreSQL role with minimum required permissions.
+Schemas: `knowledge`, `personal`, `finance` (personal), `business.finance`, `crm`, `audit`, `analytics`.
 
-| Schema | Tables | Role | Used by | Migration status |
-|---|---|---|---|---|
-| `knowledge` | TBD — being redesigned | `svc_knowledge` | knowledge-service | Needs redesign |
-| `personal` | `habits`, `habit_logs`, `goals`, `tasks`, `journal` | `svc_personal` | personal-service | Planned |
-| `finance` | `personal_transactions` | `svc_personal`, `svc_finance_personal` | personal-service, finance-service | Planned |
-| `audit` | `log` (append-only) | all service roles (INSERT only) | all services | Planned |
-| `crm` | clients, deals, projects | `svc_crm` | future | Not specced |
-
-**Migrations:** `db/migrations/0001_knowledge_schema.sql` (needs redesign), `0002_personal_schema.sql` (planned), `0003_audit_schema.sql` (planned).
-
-**LiteLLM DB:** LiteLLM requires its own tables for spend tracking and user management. These are created on first run when `DATABASE_URL` is set. Run `litellm --config litellm-config.yaml` once after `DATABASE_URL` is in the environment.
+Full table definitions, FK constraints, DB roles and grants, migration index: `docs/SCHEMAS.md`.
 
 ---
 
 ## Infrastructure
 
-PostgreSQL and Redis are running. LiteLLM is installed but DB tables not yet initialised — spend tracking is broken until `DATABASE_URL` is set and LiteLLM runs its migration.
+| Component | What it does |
+|---|---|
+| PostgreSQL + pgvector + ParadeDB | Primary database. pgvector for semantic search; ParadeDB for BM25 full-text search. |
+| Redis | LiteLLM exact-match cache + future semantic cache |
+| LiteLLM proxy | Routes all model calls → OpenRouter. Spend tracking, caching, rate limits. |
+| Prometheus + node-exporter | Metrics collection. Textfile collector for custom `.prom` files. |
+| Grafana | Dashboards. Datasource UID must be `nizam-prometheus`. |
+| Hermes profile watcher | Bidirectional sync: `hermes/profiles/` ↔ `~/.hermes/profiles/` |
+| Metrics timers | Three systemd timers write LLM spend, service health, tool call metrics. |
+| Tailscale | VPS management access via VPN |
+| fail2ban + ufw | SSH hardening |
 
-| Component | What it does | Status |
-|---|---|---|
-| PostgreSQL + pgvector + ParadeDB | Primary database. Vector search for knowledge-service. | Running — empty (no schemas) |
-| Redis | LiteLLM cache (exact + semantic) + health-monitor state | Running |
-| LiteLLM proxy | Routes model calls to OpenRouter. Spend tracking. Exact and semantic caching. Rate limits. | Installed — DB not initialised |
-| Prometheus + Grafana | Metrics collection and dashboards — see below | Running |
-| Hermes profile watcher | Bidirectional sync: `nizam-os/hermes/profiles/` ↔ `~/.hermes/profiles/` | Running |
-| Metrics collectors | Three systemd timers feeding Prometheus — see below | Running |
-| Tailscale | Private VPS access | Running |
-| fail2ban + ufw | SSH hardening | Running |
+Component-level deploy status: `docs/ROADMAP.md` → Infrastructure.
 
-**Active session monitoring:** Prometheus tracks active Hermes gateway sessions (number of `hermes-gateway-*.service` units in active state). Expected value: 1 (single user). Nazim's heartbeat includes SSH session count (`who | wc -l`) and active gateway unit count. If SSH count exceeds 1, Nazim posts an alert to `#warning`.
+Three systemd timers write `.prom` files to `/var/lib/prometheus/node-exporter/` — node-exporter picks them up every 15s. Two Grafana dashboards (`grafana/agents-dashboard.json`, `grafana/services-dashboard.json`) visualise the data. Dashboards must be re-imported after a VPS wipe.
 
-### Observability stack
-
-Three scripts run as systemd timers, collect metrics, and write to Prometheus node-exporter `.prom` files. Two Grafana dashboards (JSON in `grafana/`) visualise the data. After a VPS rebuild, dashboards must be re-imported from the JSON files — they are not auto-provisioned.
-
-**Metrics collectors:**
-
-| Script | Timer | What it collects |
-|---|---|---|
-| `scripts/metrics-llm.py` | every 1 min | LiteLLM API: calls, token counts (in/out/cache), spend, latency, cache hit rate — by model and by agent |
-| `scripts/metrics-services.sh` | every 1 min | `systemctl is-active` for all tracked services → up/down counts, 24h state history |
-| `scripts/metrics-toolcalls.py` | every 1 min | Tool call counts, error rates, wall-time duration, output size — by tool name; MCP tool calls separately |
-
-**Grafana dashboards** (`grafana/`):
-
-| File | Dashboard title | What it shows |
-|---|---|---|
-| `grafana/agents-dashboard.json` | Nizam — Agents | Spend today/month, token counts, cache hit rate + savings, latency by model, tool call counts/errors/duration by tool, spend by model/provider/agent, all-time totals, activity heatmap |
-| `grafana/services-dashboard.json` | Nizam — Services | Services up/down counts, LiteLLM proxy status, 24h service state timeline, current status table |
-
-**Rebuild steps (post VPS wipe):** `docs/plans/20260701-immediate-fixes.md` — observability setup task.
+Operational detail (verify metrics, Prometheus scrape health, dashboard import): `docs/RUNBOOK.md` → Observability.
 
 ---
 
 ## Knowledge vault
 
-Noor writes to `~/nizam-vault/` on the VPS (git repo). Notes are Markdown files with YAML frontmatter. The vault has three tiers: `personal/` (journal, fleeting, private notes — Ayah writes here), `common/` (MECE knowledge base — Noor writes here), `business/` (future).
+`~/nizam-vault/` on the VPS (git repo). Notes are Markdown with YAML frontmatter. Three subdirectories: `commons/` (Noor — MECE knowledge base), `personal/` (Ayah — journal and fleeting notes), `business/` (future).
 
-**Ingestion workflow (2-pass):**
-
-1. **Pass 1 — fetch and classify.** User shares a source (URL, YouTube, PDF, or image). Noor fetches the content, auto-classifies it using the MECE taxonomy defined in `AGENTS.md` (domain, subdomain, tags, title), and returns a complete draft note for review. No user input required at this stage beyond the source.
-2. **Pass 2 — approve, correct, or deny.** User approves the draft → Noor writes to `~/nizam-vault/common/`. User requests changes → Noor revises and shows the updated draft. User denies → nothing is written.
-
-Noor never writes without explicit approval. The MECE taxonomy is defined in `hermes/profiles/curator/AGENTS.md` — Noor uses it to auto-assign every field.
-
-| Source | Status |
-|---|---|
-| URL / web page | Code exists — non-functional until knowledge schema is set up |
-| YouTube (transcript) | Code exists — non-functional until knowledge schema is set up |
-| PDF (URL or Discord attachment) | Planned — Curator v1 |
-| Image (URL or Discord attachment) | Planned — Curator v1 |
-| Audio / podcast | Planned (future) |
-| Local video, PPT | Planned (future) |
+Ingestion workflow, approval gate, source types, MECE taxonomy: `docs/AGENTS.md` (Noor section) and `docs/SERVICES.md` (knowledge-service). Source status by type: `docs/ROADMAP.md` → Knowledge ingestion.
 
 ---
 
-## Current state (foundation)
+## Current state
 
-What's already built and live on the VPS:
+Component-level status: `docs/ROADMAP.md` → Infrastructure and Agents tables.
 
-| Component | State |
-|---|---|
-| VPS infra (UFW, fail2ban, Tailscale, SSH) | In repo — deploy via Phase 1 plan |
-| PostgreSQL + pgvector + ParadeDB | In repo — knowledge schema not yet run |
-| Redis | In repo |
-| LiteLLM proxy (port 4000) | In repo — DB tables need Prisma migration on first boot |
-| Prometheus + Grafana | In repo — dashboards in `grafana/`, imported manually |
-| Metrics timers (LLM, services, tool calls) | In repo |
-| nizam-shared library | In repo |
-| knowledge-service | In repo — stdio transport, 7 tools — non-functional until schema runs |
-| Hermes profiles | admin + curator: profiles written; assistant + cos: stubs. All need Phase 2 fixes. |
-| Systemd watcher units | In repo — installed via `scripts/setup/install-symlinks.sh` |
-| Secrets management (sops/age) | In repo — age private key must be backed up before VPS wipe |
-| Grafana dashboards | In repo — `grafana/agents-dashboard.json`, `grafana/services-dashboard.json` |
-
-Full specification of what's built: `docs/specs/20260701-foundation-design.md`
-Rebuild plan (fresh VPS → foundation): `docs/plans/20260701-foundation.md`
-
-## What needs to happen before anything else
-
-Config and profile fixes required before any build phase starts — agents will misbehave without them. Full list with status: `docs/ROADMAP.md` → Immediate fixes section. Step-by-step implementation: `docs/plans/20260701-immediate-fixes.md`.
+Immediate fixes required before Phase 3: `docs/ROADMAP.md` → Immediate fixes section. Step-by-step: `docs/plans/20260701-immediate-fixes.md`.
 
 ---
 
@@ -261,27 +168,13 @@ Full phase-by-phase sequence, status, and spec pointers: `docs/ROADMAP.md`
 
 ## Hermes profile structure
 
-Each agent lives at `hermes/profiles/<name>/` in the repo (synced to `~/.hermes/profiles/<name>/` on VPS via the profile watcher service).
+Each agent lives at `hermes/profiles/<name>/` in the repo, synced to `~/.hermes/profiles/<name>/` on VPS via the profile watcher service.
 
-| File | Purpose | Rules |
-|---|---|---|
-| `SOUL.md` | Personality, tone, communication style | Personality only. No mandates, tool lists, file paths, or workflow rules. |
-| `AGENTS.md` | Mandate, operating rules, pointers | Auto-injected at session start. The agent's authoritative instruction set. |
-| `config.yaml` | Hermes config: model, MCP servers, toolsets, Discord settings | `allowed_channels` restricts channels. `disabled_toolsets` removes tools. `skills` lists only needed skills. |
-| `user.md` | Pre-seeded user context | Loaded at session start. Contains: user name, timezone, preferences, and any context the agent should know about the person it serves. |
-| `.env` (VPS only, not in repo) | `DISCORD_TOKEN`, `DISCORD_GUILD_ID` | Never commit. Two vars only. All other env vars come from `secrets/nizam.env`. |
-| `PROTOCOL.md` | Agent-specific escalation/incident protocol | Optional. Referenced from AGENTS.md. |
-| `HEARTBEAT.md` | Scheduled check procedure | Nazim-specific. Referenced from AGENTS.md. |
+Key files per profile: `config.yaml` (model, MCP, toolsets, Discord), `SOUL.md` (personality only), `AGENTS.md` (mandate + rules), `user.md` (pre-seeded user context), `.env` (Discord token + LiteLLM key — VPS only, gitignored).
 
-**TOOLS.md is dropped.** Hermes auto-discovers MCP tools. TOOLS.md is not auto-loaded and is dead prompt weight. Delete wherever it exists.
+`TOOLS.md` is dropped — Hermes auto-discovers MCP tools; TOOLS.md is dead prompt weight. Delete wherever it exists.
 
-### Skills configuration
-
-Every profile's `config.yaml` starts with all default Hermes skills disabled. Only skills explicitly needed for the agent's mandate are re-enabled. Skill list for each agent is defined in that agent's individual spec under the "Hermes toolsets" section.
-
-Custom skills that agents need (beyond what Hermes ships) are written as standalone skill files following the [agentskills.io open standard](https://agentskills.io). They live in `hermes/skills/` and are referenced by name in each profile's `config.yaml`.
-
-Skills that are never loaded on any profile: Apple, macOS, iOS, Xcode, Homebrew (system is Linux/VPS only).
+Config field reference, SOUL.md vs AGENTS.md rules, skills, cron, MCP transport patterns: `docs/HERMES.md`.
 
 ---
 
@@ -326,11 +219,13 @@ Skills that are never loaded on any profile: Apple, macOS, iOS, Xcode, Homebrew 
 
 `docs/HERMES.md` — Hermes config.yaml reference: toolsets, MCP config, SOUL/AGENTS.md rules, skills, cron
 
-`docs/SECRETS.md` — all env vars: purpose, consumer, rotation procedure
+`docs/DISCORD.md` — Discord server structure, bot setup, intents, channel IDs, webhooks, DISCORD_ALLOWED_USERS
 
-`docs/INTEGRATIONS.md` — external services: OpenRouter, Discord, YouTube, FX, GitHub, Tailscale
+`docs/SECRETS.md` — all env vars: purpose, consumer, which phase adds them
 
-`docs/RUNBOOK.md` — day-to-day ops: service management, secret rotation, adding agents, common fixes
+`docs/INTEGRATIONS.md` — external services: OpenRouter, YouTube, FX, GitHub, Tailscale, Prometheus
+
+`docs/RUNBOOK.md` — fresh VPS rebuild sequence + day-to-day ops: service management, secret rotation, adding agents, common fixes
 
 `docs/SECURITY.md` — threat model, VPS hardening, agent controls, prompt injection, audit trail, known gaps
 

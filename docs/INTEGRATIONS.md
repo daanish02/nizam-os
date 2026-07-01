@@ -32,8 +32,6 @@ X-Title: Nizam-OS
 
 **Failure behavior:** LiteLLM returns HTTP 5xx to the agent. Hermes retries (`api_max_retries: 3`). If OpenRouter is fully down: all agent inference fails; no local fallback.
 
-**Rotate key:** openrouter.ai → Settings → API Keys → create new → update `OPENROUTER_API_KEY` in `nizam.env` → restart litellm-proxy.
-
 ---
 
 ## LiteLLM Proxy (internal)
@@ -54,19 +52,9 @@ X-Title: Nizam-OS
 
 **What:** Primary user interface. Each agent is a Discord bot in the same server.
 
-**Auth per profile:** `DISCORD_TOKEN` in `hermes/profiles/<name>/.env`
+**Auth per profile:** `DISCORD_TOKEN` in `hermes/profiles/<name>/.env`. Server ID: `DISCORD_GUILD_ID` (same across all profiles).
 
-**Server ID:** `DISCORD_GUILD_ID` in `hermes/profiles/<name>/.env` (same value for all profiles — same server)
-
-**Bot setup:** discord.com/developers → Applications → New Application → Bot → copy token. One application per agent. Required intents: Message Content Intent (enable in Bot settings).
-
-**Webhook (alerts):** `DISCORD_ADMIN_WEBHOOK` in `nizam.env` — used by inventory watcher and admin alerting. Generate in Discord: channel → Settings → Integrations → Webhooks → New Webhook.
-
-**Webhook (inventory):** `NIZAM_INVENTORY_WATCHER` in `nizam.env` — separate webhook for inventory-change notifications. Channel can be the same or different from admin webhook.
-
-**Rate limits:** Discord API: 50 requests/second per bot, global. Hermes handles backoff automatically.
-
-**Failure behavior:** If Discord API is down: gateway fails to connect, Hermes retries. Agent sessions already in progress: unaffected until they try to post a reply.
+For server structure, bot creation, intents, webhooks, channel IDs, and `DISCORD_ALLOWED_USERS` setup see `docs/DISCORD.md`.
 
 ---
 
@@ -94,9 +82,7 @@ X-Title: Nizam-OS
 
 **Installation:** `pip install yt-dlp` or `uv add yt-dlp` in knowledge-service deps. Should already be in `pyproject.toml`.
 
-**Failure behavior:** If VTT download fails: falls through to Tier 3 (YouTube Data API). No crash.
-
-**Cookie rotation:** If yt-dlp starts returning 429 or sign-in required errors, re-export `cookies.txt` from a browser (use a yt-dlp browser extension or `yt-dlp --cookies-from-browser chrome`). Update `YOUTUBE_COOKIES_FILE` path in `nizam.env`.
+**Failure behavior:** If VTT download fails: falls through to Tier 3 (YouTube Data API). No crash. If returning 429 or sign-in errors: see `docs/RUNBOOK.md` → yt-dlp cookie refresh.
 
 ---
 

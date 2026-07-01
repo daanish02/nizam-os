@@ -63,17 +63,16 @@ One spec per agent, in build order. Access control is embedded in each spec.
 
 ## Services
 
-| Service | Port | Status | Consumers |
-|---|---|---|---|
-| `knowledge-service` | 8100 | Code exists — **DB not set up, non-functional** (schema needs redesign) | Noor |
-| `finance-service` (personal schema) | 8101 | **Specced** | Ayah |
-| `finance-service` (business schema) | 8101 | **Planned** | Hala (tool-filtered) |
-| `personal-service` | 8102 | **Specced** | Ayah |
-| `crm-service` | 8104 | **Planned** | Omar, Mira |
-| `social-service` | — | **Planned** | Mira (Phase 3) |
-| `analytics-service` | — | **Planned** | Raha, Nazim (Phase 3) |
+| Service | Port | Status |
+|---|---|---|
+| `knowledge-service` | 8100 | **In repo** — non-functional (schema needs redesign) |
+| `finance-service` (personal) | 8101 | **Specced** |
+| `finance-service` (business) | 8101 | **Planned** |
+| `personal-service` | 8102 | **Specced** |
+| `crm-service` | 8104 | **Planned** |
+| `analytics-service` | 8105 | **Planned** |
 
-All services run as systemd units, HTTP transport on localhost. Hermes profiles connect via `url: http://127.0.0.1:PORT/mcp`.
+Port map, tools, consumers, tunables: `docs/SERVICES.md`.
 
 ---
 

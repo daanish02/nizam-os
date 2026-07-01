@@ -8,18 +8,18 @@ High-level reference for all eight agents. For full design decisions, behavioral
 
 ## Quick reference
 
-| Agent | Profile | Persona | Phase | Status | Spec |
-|---|---|---|---|---|---|
-| Nazim | `admin` | System admin | 4 | In repo — rename Bani→Nazim pending | `docs/specs/20260701-admin-v1-design.md` |
-| Noor | `curator` | Knowledge curator | 3 | In repo — tools non-functional (DB schema not run) | `docs/specs/20260701-curator-v1-design.md` |
-| Ayah | `assistant` | Personal assistant | 5 | In repo — stub profile | `docs/specs/20260701-assistant-v1-design.md` |
-| Raha | `cos` | Chief of Staff | 6a | In repo — stub profile | `docs/specs/20260701-cos-v1-design.md` |
-| Hala | `cfo` | CFO | 6b | Not built | `docs/specs/20260701-cfo-v1-design.md` |
-| Omar | `coo` | COO | 6c | Not built | `docs/specs/20260701-coo-v1-design.md` |
-| Reem | `cto` | CTO | 6d | Not built | `docs/specs/20260701-cto-v1-design.md` |
-| Mira | `cmo` | CMO | 6e | Not built | `docs/specs/20260701-cmo-v1-design.md` |
+| Agent | Profile | Persona | Spec |
+|---|---|---|---|
+| Nazim | `admin` | System admin | `docs/specs/20260701-admin-v1-design.md` |
+| Noor | `curator` | Knowledge curator | `docs/specs/20260701-curator-v1-design.md` |
+| Ayah | `assistant` | Personal assistant | `docs/specs/20260701-assistant-v1-design.md` |
+| Raha | `cos` | Chief of Staff | `docs/specs/20260701-cos-v1-design.md` |
+| Hala | `cfo` | CFO | `docs/specs/20260701-cfo-v1-design.md` |
+| Omar | `coo` | COO | `docs/specs/20260701-coo-v1-design.md` |
+| Reem | `cto` | CTO | `docs/specs/20260701-cto-v1-design.md` |
+| Mira | `cmo` | CMO | `docs/specs/20260701-cmo-v1-design.md` |
 
-Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compression: `deepseek/deepseek-v3-0324` (pinned per profile).
+Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compression: `deepseek/deepseek-v3-0324` (pinned per profile).
 
 ---
 
@@ -27,7 +27,6 @@ Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compr
 
 **Profile:** `hermes/profiles/admin/`
 **Channels:** `#admin`, `#alerts`, `#warning`, `#sandbox` (System category — full category access)
-**Gateway:** Active (rename Bani→Nazim pending)
 
 **Mandate:** Infrastructure health, incident response, service restarts, Hermes guide. Has `terminal` + `file` for diagnostic commands. Sudo scoped to service restarts only via `/etc/sudoers.d/nazim-hermes`.
 
@@ -51,7 +50,6 @@ Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compr
 
 **Profile:** `hermes/profiles/curator/`
 **Channel:** `#learning` (Personal category)
-**Gateway:** Active — tools non-functional until knowledge schema runs
 
 **Mandate:** Ingest content into `~/nizam-vault/commons/`. All writes approval-gated (3-pass: preview → draft → write). MECE taxonomy enforced. Never skips approval.
 
@@ -73,7 +71,6 @@ Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compr
 
 **Profile:** `hermes/profiles/assistant/`
 **Channels:** `#chat`, `#finances`, `#habits`, `#goals-tasks`, `#journal` (Personal category — all five are free_response_channels, no @mention needed)
-**Gateway:** Not active (stub profile)
 
 **Mandate:** Personal finance (multicurrency, zakat, riba), habits, goals, tasks, journal. All finance writes require user confirmation before committing. Never commits with `approved=False`.
 
@@ -98,8 +95,7 @@ Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compr
 ## Raha — Chief of Staff
 
 **Profile:** `hermes/profiles/cos/`
-**Channels:** `#strategy` (Chairman's Office), `#boardroom`, `#biz-chat` (Arc Systems)
-**Gateway:** Not active (stub profile)
+**Channels:** `#boardroom`, `#biz-chat` (Arc Systems)
 
 **Mandate:** Coordinate C-suite agents, synthesise outputs, report to Chairman. No direct data access — all information comes through delegation. Owns the weekly Monday review cron.
 
@@ -128,8 +124,6 @@ Delegation modes: **sync** (Raha blocks until child responds) or **async** (Raha
 
 **Profile:** `hermes/profiles/cfo/`
 **Channel:** `#cfo-office` (Arc Systems)
-**Gateway:** Not built
-
 **Mandate:** Business financial records — transactions, invoices, P&L, budgets. Does not touch personal finance. Reports to Raha; user can also reach Hala directly in `#cfo-office`.
 
 **Hermes toolsets:** `memory`, `skills`, `clarify`
@@ -141,7 +135,7 @@ Delegation modes: **sync** (Raha blocks until child responds) or **async** (Raha
 | `finance-service` :8101 | Business tools only: `record_business_transaction`, `create_invoice`, `update_invoice_status`, `business_spending_report`, `business_account_balance`, `p_and_l_report`, `invoice_status_report` |
 
 **Key constraints:**
-- `svc_finance_business` role — zero access to `finance.personal_transactions`
+- `svc_finance_business` role — zero access to `finance.*` personal tables
 - All writes go to `audit.log`
 
 ---
@@ -150,8 +144,6 @@ Delegation modes: **sync** (Raha blocks until child responds) or **async** (Raha
 
 **Profile:** `hermes/profiles/coo/`
 **Channel:** `#coo-office` (Arc Systems)
-**Gateway:** Not built
-
 **Mandate:** Client relationships, project delivery, CRM. Read-only access to business finance for quoting context only — cannot create transactions or invoices.
 
 **Hermes toolsets:** `memory`, `skills`, `clarify`, `web`
@@ -173,8 +165,6 @@ Delegation modes: **sync** (Raha blocks until child responds) or **async** (Raha
 
 **Profile:** `hermes/profiles/cto/`
 **Channel:** `#cto-office` (Arc Systems)
-**Gateway:** Not built
-
 **Mandate:** Codebase health, PR review, tech debt, architecture concerns. Read-only diagnostics on VPS. Cannot deploy, restart services, or install packages.
 
 **Hermes toolsets:** `terminal` (scoped), `file`, `memory`, `skills`, `clarify`, `web`
@@ -202,8 +192,6 @@ Anything outside this list requires manual Discord approval before execution.
 
 **Profile:** `hermes/profiles/cmo/`
 **Channel:** `#cmo-office` (Arc Systems)
-**Gateway:** Not built
-
 **Mandate:** Content strategy, LinkedIn presence, marketing campaigns. Reads vault for ideas, reads CRM for case studies. Does not write to either. Post performance tracking is Phase 7 (requires `analytics-service`).
 
 **Hermes toolsets:** `memory`, `skills`, `clarify`, `web`, `image_gen` (enable only if vision backend available on VPS)
