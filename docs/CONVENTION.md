@@ -4,15 +4,29 @@ Applies to: nizam-dotfiles, nizam-os. Shared style, consistent across both.
 
 ---
 
+## Primary audience
+
+**The primary reader of all docs is Claude Code and Hermes agents, not humans.** The user reads docs to review and annotate, but the majority of consumption is by AI sessions. Write accordingly: be precise, complete, and unambiguous. Assume zero prior context in every document.
+
+---
+
+## Hard rules (non-negotiable)
+
+- **No emojis.** In docs, code, comments, agent responses, or anywhere else.
+- **Never modify `~/.hermes/` or Hermes source code.** Configuration only via `hermes/profiles/<name>/`. See `docs/ARCHITECTURE.md` for the full constraint.
+- **Single source of truth.** No value defined in two places. When referencing a value from another file, link to it — do not copy it.
+- **No "update docs later."** Docs change with code in the same commit. Later never comes.
+- **No placeholders in plans.** Every step in `docs/plans/` must contain the actual code, command, and expected output. "TBD", "TODO", and "similar to above" are plan failures.
+
+---
+
 ## Principles
 
-- Write for two readers at once: someone who just wants to understand, and someone who needs to act.
 - Say what something is before saying how it works.
 - Short over long. If a sentence can be cut without losing meaning, cut it.
 - Mention the non-obvious. Skip the obvious.
 - Docs should be referenceable — write with the assumption that another doc will link here.
 - Don't duplicate. One doc owns a topic; others link to it. Duplicated content drifts out of sync.
-- Docs change with code in the same commit. No "update docs later" — later never comes.
 
 ---
 
@@ -29,15 +43,17 @@ Applies to: nizam-dotfiles, nizam-os. Shared style, consistent across both.
 
 ## Writing for AI readers
 
-Docs are read by agents (Bani, Arwa, etc.) and by Claude Code sessions as context. AI readers parse structure differently from humans — they don't skim, but they lose precision when references are ambiguous.
+The primary reader is a Claude Code session or a Hermes agent consuming this as context. AI readers do not skim, but they lose precision when references are ambiguous or information is incomplete.
 
 Rules:
-- Define a term on first use, then use it consistently throughout. Don't alternate between "LiteLLM proxy", "the proxy", and "LiteLLM" — pick one and keep it.
+- Define a term on first use, then use it consistently. Do not alternate between "LiteLLM proxy", "the proxy", and "LiteLLM" — pick one and keep it.
 - Never use "the above" or "as mentioned earlier" — restate the noun. AI has no scroll position.
 - Avoid orphaned pronouns. "It writes the file" → "The script writes the file."
-- One concept per sentence. Compound sentences that chain three conditions degrade comprehension for both AI and humans.
+- One concept per sentence. Compound sentences that chain three conditions degrade comprehension.
 - Prefer concrete over abstract. "Runs every 5 minutes via `metrics-services.timer`" beats "runs periodically".
 - Put context before detail. State what a section is about in the first sentence, then go into specifics.
+- Include exact file paths, port numbers, env var names, and command strings. Approximate values are errors.
+- State current status explicitly. "Non-functional until X" is better than implying something works when it does not.
 
 ---
 
