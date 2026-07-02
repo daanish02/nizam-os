@@ -31,6 +31,6 @@ One file per phase. What was chosen to build and why — design decisions, schem
 
 ---
 
-### Build &nbsp;`plans/*.md`
+### Build `plans/*.md`
 
 One file per phase. Ordered tasks, commands, test steps. Points to the matching spec for rationale. No design discussion.
