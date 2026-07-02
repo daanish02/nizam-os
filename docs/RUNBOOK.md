@@ -275,6 +275,14 @@ psql -U svc_knowledge -d nizam  # as service user
 
 ### Run a migration
 
+Migrations are managed via dbmate. Normal path:
+
+```bash
+dbmate up
+```
+
+Manual fallback (emergency only):
+
 ```bash
 psql -U vazir -d nizam -f db/migrations/0001_knowledge_schema.sql
 ```

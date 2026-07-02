@@ -10,18 +10,12 @@ The goal is not to automate tasks. The goal is to offload the cognitive overhead
 
 - **Knowledge is captured automatically.** I drop a PDF, a URL, or an image into Discord. Noor extracts it, classifies it, and files it into the vault with my approval. My vault grows without friction.
 - **My health is monitored without me.** Nazim watches all services, restarts what can be restarted, and posts clear incident reports. I wake up to a system that fixed itself overnight.
-- **My day starts with a briefing.** Every morning Ayah sends a summary: what I spent yesterday, the five tasks coming up, a quote. Every evening she posts a recap of the day's spend and opens a thread where I can journal.
+- **My day starts with a briefing.** Every morning Ayah posts in `#briefing`: total balance across all accounts, total spent this month to date, the five tasks coming up, a quote. Every evening she posts a recap of the day's spend, current balance, and five upcoming tasks, then opens a thread for journaling.
 - **My habits, goals, and projects are always current.** I tell Ayah what I completed. She logs it, tracks streaks, and surfaces what's due — without me opening an app or remembering to update anything.
 - **My money is always accounted for.** Every expense and income I log through Ayah. Monthly reconciliation happens in one conversation. Zakat is calculated when it's due.
-- **My faith and personal growth are tracked, not just my work.** Deen-related goals, reading, and reflection live in the vault and the journal alongside everything else.
+- **My personal growth is tracked, not just my work.** Goals — including deen-related goals — reading, and reflection live in the vault and the journal alongside everything else.
 
-**Business:**
-
-- **My business runs through agents.** Raha synthesizes information, runs weekly reviews, and delegates tasks to the right agent — synchronously when she needs an immediate answer, asynchronously when the task can wait.
-- **Hala tracks every dirham.** Business income, expenses, invoices, and reconciliation all flow through the CFO agent. No number is unaccounted for.
-- **Omar keeps operations running.** Client relationships, project status, and operational tasks are his domain.
-- **Reem keeps the codebase healthy.** Code reviews, dependency updates, and technical decisions are flagged and tracked.
-- **Mira drives growth.** Content strategy, campaign tracking, and social performance analytics inform what to publish and when.
+**Business vision (Phases 6a–6e):** `docs/future/VISION.md`.
 
 **Infrastructure:**
 

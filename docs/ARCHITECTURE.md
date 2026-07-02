@@ -1,6 +1,6 @@
 # Nizam-OS — Architecture & Start Here
 
-> **How to use this document:** Read top to bottom. This is the primary reference for Claude Code sessions and Hermes agents. All design decisions are recorded here. Drill-down links at the bottom.
+> **How to use this document:** Read top to bottom. This is the primary reference for Claude Code sessions, Hermes agents, and any other AI/LLM working in this repo. All design decisions are recorded here. Drill-down links at the bottom.
 
 ---
 
@@ -8,7 +8,7 @@
 
 A private AI operating system on a VPS. Eight autonomous agents each own a domain of life or business. They connect to Discord, call MCP services (which talk to PostgreSQL), and run as systemd services. Interaction happens through Discord channels. The VPS is invisible.
 
-**VPS:** Hostinger KVM2 — 8 GB RAM, 100 GB SSD, expires 10 Jun 2027.
+**VPS:** Hostinger KVM2 — 8 GB RAM, 100 GB SSD, Ubuntu 24.04 LTS, expires 10 Jun 2027. Cost: 107.89 USD total.
 
 **Rebuild context:** The VPS will be wiped and rebuilt from scratch. This repo is the complete rebuild runbook — nothing exists only on the VPS without a record here. Start from `docs/plans/20260701-foundation.md` to go from bare OS to a working system.
 
@@ -37,11 +37,8 @@ Eight agents across three Discord categories. Each owns a domain; each is a Herm
 | Nazim | System admin | 4 | In repo — rename Bani→Nazim pending |
 | Noor | Knowledge curator | 3 | In repo — tools non-functional (schema not run) |
 | Ayah | Personal assistant | 5 | In repo — stub profile |
-| Raha | Chief of Staff | 6a | In repo — stub profile |
-| Hala | CFO | 6b | Not built |
-| Omar | COO | 6c | Not built |
-| Reem | CTO | 6d | Not built |
-| Mira | CMO | 6e | Not built |
+
+Business agents (Phases 6a–6e): `docs/future/ARCHITECTURE.md`.
 
 Per-agent channels, toolsets, MCP access, command allowlists, and key constraints: `docs/AGENTS.md`.
 Discord server structure and channel-to-agent map: `docs/DISCORD.md`.
@@ -66,7 +63,7 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
     └── MCP servers (HTTP, localhost only)
             │
             ├── knowledge-service  :8100  → knowledge schema       (PostgreSQL)
-            ├── finance-service    :8101  → finance + biz.finance  (PostgreSQL)
+            ├── finance-service    :8101  → finance_personal + finance_business  (PostgreSQL)
             ├── personal-service   :8102  → personal schema        (PostgreSQL)
             ├── crm-service        :8104  → crm schema             (PostgreSQL)
             └── analytics-service  :8105  → analytics schema       (PostgreSQL)
@@ -78,7 +75,7 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 
 - **HTTP over stdio for MCP.** Stdio spawns a Python process per agent session — multiple active agents means multiple processes each holding a DB connection and RAM. HTTP means one process, one DB connection, fixed RAM regardless of how many agents are active. Cold start per session drops from ~2s to zero. All MCP services run as standalone systemd units. Hermes connects via `url: http://127.0.0.1:PORT/mcp`.
 
-- **LiteLLM as the model proxy.** All LLM calls route through LiteLLM → OpenRouter. Spend tracking, token counting, tool call logging, request/response latency, rate limiting, and caching happen at this layer.
+- **LiteLLM as the model proxy.** All LLM calls route through LiteLLM → OpenRouter. Spend tracking, token counting, tool call logging, request/response latency, rate limiting, and caching happen at this layer. LiteLLM supports 100+ providers (Anthropic, Google, Bedrock, Mistral, and others) — switching providers means changing `model` and `base_url` in `config.yaml` only, no code changes to agents or services.
 
 - **Caching is first-class.** LiteLLM enables two cache layers: exact cache (Redis key-match — identical prompts return instantly) and semantic cache (Redis + embeddings — similar prompts return without re-inference). Exact cache is active. Semantic cache is planned (`config/litellm.yaml`: "Semantic cache added later").
 
@@ -103,8 +100,8 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 | `knowledge-service` | 8100 | In repo — non-functional (schema not run) |
 | `finance-service` | 8101 | Specced |
 | `personal-service` | 8102 | Specced |
-| `crm-service` | 8104 | Planned |
-| `analytics-service` | 8105 | Planned |
+
+Business services (crm-service/8104, analytics-service/8105, math-service/8103): `docs/future/ARCHITECTURE.md`.
 
 Port map, tool signatures, consumer access matrix, approval workflows, and tunables: `docs/SERVICES.md`.
 
@@ -114,7 +111,11 @@ Port map, tool signatures, consumer access matrix, approval workflows, and tunab
 
 Single PostgreSQL instance. Each service connects as its own role — isolation enforced at the DB layer, not by convention.
 
-Schemas: `knowledge`, `personal`, `finance` (personal), `business.finance`, `crm`, `audit`, `analytics`.
+Schemas: `knowledge`, `personal`, `finance_personal`, `audit`.
+
+`finance_personal` is isolated from the business finance schema — separate role, separate migrations, separate service connection.
+
+Business schemas (finance_business, crm, analytics): `docs/future/SCHEMAS.md`.
 
 Full table definitions, FK constraints, DB roles and grants, migration index: `docs/SCHEMAS.md`.
 
@@ -138,15 +139,19 @@ Component-level deploy status: `docs/ROADMAP.md` → Infrastructure.
 
 Three systemd timers write `.prom` files to `/var/lib/prometheus/node-exporter/` — node-exporter picks them up every 15s. Two Grafana dashboards (`grafana/agents-dashboard.json`, `grafana/services-dashboard.json`) visualise the data. Dashboards must be re-imported after a VPS wipe.
 
+Timer `OnCalendar` values are staggered (metrics-llm at :00, metrics-services at :02, metrics-toolcalls at :04) so load does not peak simultaneously.
+
 Operational detail (verify metrics, Prometheus scrape health, dashboard import): `docs/RUNBOOK.md` → Observability.
 
 ---
 
 ## Knowledge vault
 
-`~/nizam-vault/` on the VPS (git repo). Notes are Markdown with YAML frontmatter. Three subdirectories: `commons/` (Noor — MECE knowledge base), `personal/` (Ayah — journal and fleeting notes), `business/` (future).
+`~/nizam-vault/` on the VPS (git repo). Notes are Markdown with YAML frontmatter. Three subdirectories: `commons/` (Noor), `personal/` (Ayah — journal), `business/` (future).
 
-Ingestion workflow, approval gate, source types, MECE taxonomy: `docs/AGENTS.md` (Noor section) and `docs/SERVICES.md` (knowledge-service). Source status by type: `docs/ROADMAP.md` → Knowledge ingestion.
+Notes use an `areas` field (multi-value controlled vocabulary) instead of a strict single-domain taxonomy. Overlap is expected and allowed — a note on stoicism can be both `philosophy-ethics` and `personal-development`. Values are enforced by knowledge-service at write time; new areas require a code change. `tags` is separate, free-form supplementary metadata.
+
+Ingestion workflow, approval gate, source types, area vocabulary: `docs/AGENTS.md` (Noor section) and `docs/SERVICES.md` (knowledge-service). Source status by type: `docs/ROADMAP.md` → Knowledge ingestion.
 
 ---
 
@@ -160,7 +165,7 @@ Immediate fixes required before Phase 3: `docs/ROADMAP.md` → Immediate fixes s
 
 ## Build order
 
-**Personal agents before business agents.** Personal (Noor, Nazim, Ayah) allows for mistakes and downtime. Business agents (Raha, Hala, Omar, Reem, Mira) carry compliance and risk implications — build them only after the personal side is stable and the pattern is proven. Both are fully specced now; only the implementation sequence is personal-first.
+**Personal agents before business agents.** Personal (Noor, Nazim, Ayah) establishes the pattern. Within personal: Nazim is critical infrastructure — he maintains all other services and agents (their doctor). Nail Nazim before Noor and Ayah; errors in Noor and Ayah are recoverable, errors in Nazim take down everyone. Business agents (Phases 6a–6e): `docs/future/ARCHITECTURE.md`. Build them only after the personal side is stable; lessons from all three personal agents feed directly into business implementations.
 
 Full phase-by-phase sequence, status, and spec pointers: `docs/ROADMAP.md`
 
@@ -170,7 +175,7 @@ Full phase-by-phase sequence, status, and spec pointers: `docs/ROADMAP.md`
 
 Each agent lives at `hermes/profiles/<name>/` in the repo, synced to `~/.hermes/profiles/<name>/` on VPS via the profile watcher service.
 
-Key files per profile: `config.yaml` (model, MCP, toolsets, Discord), `SOUL.md` (personality only), `AGENTS.md` (mandate + rules), `user.md` (pre-seeded user context), `.env` (Discord token + LiteLLM key — VPS only, gitignored).
+Key files per profile: `config.yaml` (model, MCP, toolsets, Discord), `SOUL.md` (personality only), `AGENTS.md` (mandate + rules), `memories/USER.md` (pre-seeded user context — static, version-controlled), `.env` (Discord token + LiteLLM key — VPS only, gitignored).
 
 `TOOLS.md` is dropped — Hermes auto-discovers MCP tools; TOOLS.md is dead prompt weight. Delete wherever it exists.
 
@@ -188,11 +193,8 @@ Config field reference, SOUL.md vs AGENTS.md rules, skills, cron, MCP transport 
 | Curator v1 (Noor) | `docs/specs/20260701-curator-v1-design.md` | 3 |
 | Admin v1 (Nazim) | `docs/specs/20260701-admin-v1-design.md` | 4 |
 | Assistant v1 (Ayah) | `docs/specs/20260701-assistant-v1-design.md` | 5 |
-| CoS v1 (Raha) | `docs/specs/20260701-cos-v1-design.md` | 6a |
-| CFO v1 (Hala) | `docs/specs/20260701-cfo-v1-design.md` | 6b |
-| COO v1 (Omar) | `docs/specs/20260701-coo-v1-design.md` | 6c |
-| CTO v1 (Reem) | `docs/specs/20260701-cto-v1-design.md` | 6d |
-| CMO v1 (Mira) | `docs/specs/20260701-cmo-v1-design.md` | 6e |
+
+Business specs: `docs/future/ARCHITECTURE.md` → Drill-down index.
 
 ### Plans (step-by-step implementation guides)
 
@@ -203,11 +205,8 @@ Config field reference, SOUL.md vs AGENTS.md rules, skills, cron, MCP transport 
 | Curator v1 | `docs/plans/20260701-curator-v1.md` | Phase 2 complete |
 | Admin v1 | `docs/plans/20260701-admin-v1.md` | Phase 2 complete |
 | Assistant v1 | `docs/plans/20260701-assistant-v1.md` | Phase 2 complete |
-| CoS v1 | written at Phase 6a start | Phase 5 live |
-| CFO v1 | written at Phase 6b start | Phase 6a live |
-| COO v1 | written at Phase 6c start | Phase 6b live |
-| CTO v1 | written at Phase 6d start | Phase 6c live |
-| CMO v1 | written at Phase 6e start | Phase 6d live |
+
+Business plans: `docs/future/ARCHITECTURE.md`.
 
 ### Quick-reference docs
 
@@ -226,6 +225,8 @@ Config field reference, SOUL.md vs AGENTS.md rules, skills, cron, MCP transport 
 `docs/INTEGRATIONS.md` — external services: OpenRouter, YouTube, FX, GitHub, Tailscale, Prometheus
 
 `docs/RUNBOOK.md` — fresh VPS rebuild sequence + day-to-day ops: service management, secret rotation, adding agents, common fixes
+
+`docs/future/ARCHITECTURE.md` — business agents, services, build order (Phases 6a–6e)
 
 `docs/SECURITY.md` — threat model, VPS hardening, agent controls, prompt injection, audit trail, known gaps
 
