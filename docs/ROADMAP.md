@@ -45,51 +45,20 @@ Full infrastructure spec and rebuild plan: `docs/specs/20260701-foundation-desig
 
 ## Specs
 
-One spec per agent, in build order. Access control is embedded in each spec.
-
-| Spec | File | Phase | Status |
-|---|---|---|---|
-| Foundation | `docs/specs/20260701-foundation-design.md` | 1 | **In repo** |
-| Curator v1 (Noor) | `docs/specs/20260701-curator-v1-design.md` | 3 | **Approved** |
-| Admin v1 (Nazim) | `docs/specs/20260701-admin-v1-design.md` | 4 | **Approved** |
-| Assistant v1 (Ayah) | `docs/specs/20260701-assistant-v1-design.md` | 5 | **Approved** |
-| CoS v1 (Raha) | `docs/specs/20260701-cos-v1-design.md` | 6a | **Approved** |
-| CFO v1 (Hala) | `docs/specs/20260701-cfo-v1-design.md` | 6b | **Approved** |
-| COO v1 (Omar) | `docs/specs/20260701-coo-v1-design.md` | 6c | **Approved** |
-| CTO v1 (Reem) | `docs/specs/20260701-cto-v1-design.md` | 6d | **Approved** |
-| CMO v1 (Mira) | `docs/specs/20260701-cmo-v1-design.md` | 6e | **Approved** |
+Personal specs: `docs/ARCHITECTURE.md` → Drill-down index → Specs.
+Business specs: `docs/future/ARCHITECTURE.md` → Drill-down index.
 
 ---
 
 ## Services
 
-| Service | Port | Status |
-|---|---|---|
-| `knowledge-service` | 8100 | **In repo** — non-functional (schema needs redesign) |
-| `finance-service` (personal) | 8101 | **Specced** |
-| `finance-service` (business) | 8101 | **Planned** |
-| `personal-service` | 8102 | **Specced** |
-| `crm-service` | 8104 | **Planned** |
-| `analytics-service` | 8105 | **Planned** |
-
-Port map, tools, consumers, tunables: `docs/SERVICES.md`.
+Port map and tool specs: `docs/SERVICES.md`. Status per service is in the Build order table below.
 
 ---
 
 ## Database migrations
 
-| Migration | Status | Schema |
-|---|---|---|
-| `0001_knowledge_schema.sql` | **Needs redesign** | `knowledge` — vault index, embeddings, audit |
-| `0002_personal_schema.sql` | **Specced** | `personal` — habits, goals, tasks, journal + `finance.personal` |
-| `0003_audit_schema.sql` | **Specced** | `audit` — shared append-only log |
-| `0004_business_finance_schema.sql` | **Planned** | `finance.business` — ledger, invoices |
-| `0005_crm_schema.sql` | **Planned** | `crm` — clients, deals, projects |
-| `0006_analytics_schema.sql` | **Planned (Phase 5)** | `analytics` — post metrics, campaign performance, engagement data |
-
-**audit schema:** Every service that mutates data writes a row to `audit.log` — what changed, who (which agent profile) changed it, before/after state as JSON. Append-only (UPDATE and DELETE rules disabled). Gives a full history of every action any agent ever took. Not court-grade tamper-proof, but enough for internal accountability and debugging.
-
-**analytics schema:** Stores performance metrics for content (posts, campaigns) so Mira can query what works. Populated by `analytics-service` pulling from social platform APIs or manual input. Not needed until Mira is built.
+Migration index, schema status, and DB roles: `docs/SCHEMAS.md` → Migration index.
 
 ---
 
@@ -147,11 +116,11 @@ Personal agents first — they tolerate mistakes. Business agents follow only af
 | 3 | Curator v1 — Noor: PDF + image, HTTP MCP, unified ingest | `20260701-curator-v1-design.md` | `20260701-curator-v1.md` | Pending |
 | 4 | Admin v1 — Nazim: health monitor + cron | `20260701-admin-v1-design.md` | `20260701-admin-v1.md` | Pending |
 | 5 | Assistant v1 — Ayah: personal + finance services | `20260701-assistant-v1-design.md` | `20260701-assistant-v1.md` | Pending |
-| 6a | CoS v1 — Raha: delegation, weekly review | `20260701-cos-v1-design.md` | TBD | Pending |
-| 6b | CFO v1 — Hala: business finance | `20260701-cfo-v1-design.md` | TBD | Pending |
-| 6c | COO v1 — Omar: CRM, operations | `20260701-coo-v1-design.md` | TBD | Pending |
-| 6d | CTO v1 — Reem: GitHub MCP | `20260701-cto-v1-design.md` | TBD | Pending |
-| 6e | CMO v1 — Mira: content, CRM read | `20260701-cmo-v1-design.md` | TBD | Pending |
+| 6a | CoS v1 — Raha: delegation, weekly review | `docs/future/specs/20260701-cos-v1-design.md` | TBD | Pending |
+| 6b | CFO v1 — Hala: business finance | `docs/future/specs/20260701-cfo-v1-design.md` | TBD | Pending |
+| 6c | COO v1 — Omar: CRM, operations | `docs/future/specs/20260701-coo-v1-design.md` | TBD | Pending |
+| 6d | CTO v1 — Reem: GitHub MCP | `docs/future/specs/20260701-cto-v1-design.md` | TBD | Pending |
+| 6e | CMO v1 — Mira: content, CRM read | `docs/future/specs/20260701-cmo-v1-design.md` | TBD | Pending |
 
 ---
 

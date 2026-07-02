@@ -91,7 +91,7 @@ platform_toolsets:
     - memory          # persistent memory across sessions
     - skills          # load custom .md skill files
     - clarify         # ask user a question before proceeding
-    - delegation      # spawn child agents (Raha only)
+    - delegation      # spawn child agents (Reem only — sandbox dev agents)
     - kanban          # task board (Raha only — NOT in the default discord wildcard)
     - terminal        # shell access (Nazim, Reem — scoped by command_allowlist)
     - file            # read/write files on VPS (Nazim, Reem)
@@ -190,7 +190,7 @@ discord:
     "<channel_id>": "User is in #finances. Focus on financial queries."
 ```
 
-Channel IDs are Discord snowflake integers. Get them: Discord → enable Developer Mode → right-click channel → Copy Channel ID.
+Channel IDs are Discord snowflake integers. See `docs/DISCORD.md` → Getting channel IDs.
 
 ### Delegation (Reem only — sandbox agents)
 

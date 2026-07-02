@@ -18,13 +18,7 @@ Full vision: `docs/VISION.md`
 
 ## Critical constraints
 
-These apply to every task, every session, forever. Non-negotiable.
-
-- **`~/.hermes/` is read-only.** Never modify Hermes source code or runtime files. Configure behaviour only via files in `hermes/profiles/<name>/`. This includes `SOUL.md`, `AGENTS.md`, `config.yaml`, and skills. No exceptions.
-- **Single source of truth for config.** All shared env vars live in one file: `secrets/nizam.env` (templated as `secrets/nizam.env.example` in the repo). Per-agent `.env` on VPS contains only `DISCORD_TOKEN` and `DISCORD_GUILD_ID`. No value is defined in two places.
-- **No emojis.** In code, docs, agent responses, or anywhere else.
-- **Primary audience is Claude Code and Hermes agents.** Write all docs precisely and completely. Assume no prior context. Avoid ambiguous references, orphaned pronouns, and approximate values.
-- **Never commit.** User commits all changes manually.
+Non-negotiable rules for all sessions: `docs/CONVENTION.md` → Hard rules.
 
 ---
 
@@ -79,9 +73,9 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 
 - **Caching is first-class.** LiteLLM enables two cache layers: exact cache (Redis key-match — identical prompts return instantly) and semantic cache (Redis + embeddings — similar prompts return without re-inference). Exact cache is active. Semantic cache is planned (`config/litellm.yaml`: "Semantic cache added later").
 
-- **`allow_lazy_installs: false`.** Hermes default allows agents to run `pip install` at runtime. This is disabled on all profiles. Every dependency must be declared in `pyproject.toml` and reviewed by the user. Agents cannot pull in packages silently.
+- **`allow_lazy_installs: false`.** Hermes default allows agents to run `pip install` at runtime. This is disabled on all profiles. Every dependency must be declared in `pyproject.toml` and reviewed by the user. Agents cannot pull in packages silently. Required on all profiles — see `docs/CONVENTION.md` → Hard rules.
 
-- **Compression model pinned.** Hermes summarizes long conversation context to fit within the context window. Without pinning it uses the primary model. All profiles pin `deepseek/deepseek-v3-0324` via `custom:litellm` as the compression model. Cost: near zero.
+- **Compression model pinned.** Hermes summarizes long conversation context to fit within the context window. Without pinning it uses the primary model. All profiles pin a dedicated compression model via `custom:litellm`. Cost: near zero. Model and config: `docs/HERMES.md` → Compression model.
 
 - **Sudo is scoped.** Nazim can restart specific services only, via `/etc/sudoers.d/nazim-hermes`. No full sudo.
 
@@ -95,15 +89,15 @@ Agent (LLM via LiteLLM proxy → OpenRouter)
 
 **Architecture principle:** Services and agents are independent. A service does not know or care which agent calls it. One service can serve multiple agents with different tool filters. Capability is added by building a service, not by modifying an agent.
 
-| Service | Port | Status |
-|---|---|---|
-| `knowledge-service` | 8100 | In repo — non-functional (schema not run) |
-| `finance-service` | 8101 | Specced |
-| `personal-service` | 8102 | Specced |
+| Service | Port |
+|---|---|
+| `knowledge-service` | 8100 |
+| `finance-service` | 8101 |
+| `personal-service` | 8102 |
+
+Status and detail (tools, consumers, tunables): `docs/SERVICES.md`.
 
 Business services (crm-service/8104, analytics-service/8105, math-service/8103): `docs/future/ARCHITECTURE.md`.
-
-Port map, tool signatures, consumer access matrix, approval workflows, and tunables: `docs/SERVICES.md`.
 
 ---
 
@@ -129,7 +123,7 @@ Full table definitions, FK constraints, DB roles and grants, migration index: `d
 | Redis | LiteLLM exact-match cache + future semantic cache |
 | LiteLLM proxy | Routes all model calls → OpenRouter. Spend tracking, caching, rate limits. |
 | Prometheus + node-exporter | Metrics collection. Textfile collector for custom `.prom` files. |
-| Grafana | Dashboards. Datasource UID must be `nizam-prometheus`. |
+| Grafana | Dashboards. |
 | Hermes profile watcher | Bidirectional sync: `hermes/profiles/` ↔ `~/.hermes/profiles/` |
 | Metrics timers | Three systemd timers write LLM spend, service health, tool call metrics. |
 | Tailscale | VPS management access via VPN |
@@ -139,7 +133,7 @@ Component-level deploy status: `docs/ROADMAP.md` → Infrastructure.
 
 Three systemd timers write `.prom` files to `/var/lib/prometheus/node-exporter/` — node-exporter picks them up every 15s. Two Grafana dashboards (`grafana/agents-dashboard.json`, `grafana/services-dashboard.json`) visualise the data. Dashboards must be re-imported after a VPS wipe.
 
-Timer `OnCalendar` values are staggered (metrics-llm at :00, metrics-services at :02, metrics-toolcalls at :04) so load does not peak simultaneously.
+Timer stagger values and tunable intervals: `docs/SERVICES.md` → Infrastructure tunables.
 
 Operational detail (verify metrics, Prometheus scrape health, dashboard import): `docs/RUNBOOK.md` → Observability.
 
@@ -151,7 +145,7 @@ Operational detail (verify metrics, Prometheus scrape health, dashboard import):
 
 Notes use an `areas` field (multi-value controlled vocabulary) instead of a strict single-domain taxonomy. Overlap is expected and allowed — a note on stoicism can be both `philosophy-ethics` and `personal-development`. Values are enforced by knowledge-service at write time; new areas require a code change. `tags` is separate, free-form supplementary metadata.
 
-Ingestion workflow, approval gate, source types, area vocabulary: `docs/AGENTS.md` (Noor section) and `docs/SERVICES.md` (knowledge-service). Source status by type: `docs/ROADMAP.md` → Knowledge ingestion.
+Approval workflow and area vocabulary: `docs/SERVICES.md` → knowledge-service. Source status by type: `docs/ROADMAP.md` → Knowledge ingestion.
 
 ---
 
@@ -173,13 +167,7 @@ Full phase-by-phase sequence, status, and spec pointers: `docs/ROADMAP.md`
 
 ## Hermes profile structure
 
-Each agent lives at `hermes/profiles/<name>/` in the repo, synced to `~/.hermes/profiles/<name>/` on VPS via the profile watcher service.
-
-Key files per profile: `config.yaml` (model, MCP, toolsets, Discord), `SOUL.md` (personality only), `AGENTS.md` (mandate + rules), `memories/USER.md` (pre-seeded user context — static, version-controlled), `.env` (Discord token + LiteLLM key — VPS only, gitignored).
-
-`TOOLS.md` is dropped — Hermes auto-discovers MCP tools; TOOLS.md is dead prompt weight. Delete wherever it exists.
-
-Config field reference, SOUL.md vs AGENTS.md rules, skills, cron, MCP transport patterns: `docs/HERMES.md`.
+Profile file layout, lifecycle, and config reference: `docs/HERMES.md`.
 
 ---
 

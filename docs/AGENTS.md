@@ -43,7 +43,7 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 **Profile:** `hermes/profiles/curator/`
 **Channel:** `#learning` (Personal category)
 
-**Mandate:** Ingest content into `~/nizam-vault/commons/`. All writes approval-gated (2-pass: Noor drafts note with suggested areas/tags → user approves, rejects, or requests edit). Never skips approval. Vault walks via Hermes `cronjob` (periodic re-indexing or status updates).
+**Mandate:** Ingest content into `~/nizam-vault/commons/`. All writes approval-gated (2-pass). Workflow: `docs/SERVICES.md` → knowledge-service → Approval workflow. Never skips approval. Vault walks via Hermes `cronjob` (periodic re-indexing or status updates).
 
 **Hermes toolsets:** `memory`, `skills`, `clarify`, `cronjob`
 
@@ -55,7 +55,7 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 |---|---|
 | `knowledge-service` :8100 | All tools (owns all vault writes) |
 
-**Area vocabulary (enforced, multi-value):** `technology`, `science`, `business`, `finance-economics`, `philosophy-ethics`, `health-wellness`, `arts-culture`, `history-society`, `language-communication`, `personal-development`. A note may belong to multiple areas. Noor suggests areas; user corrects if wrong at approval step.
+**Area vocabulary:** Controlled, enforced by knowledge-service — `docs/SCHEMAS.md` → knowledge schema → areas taxonomy. Noor suggests areas; user corrects at approval step.
 ---
 
 ## Ayah — Personal Assistant

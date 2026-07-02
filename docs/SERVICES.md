@@ -108,11 +108,7 @@ One service binary, two DB roles. Personal and business tools share the same HTT
 |---|---|---|
 | Ayah (`assistant`) | `svc_finance_personal` | All personal tools |
 
-### DB roles
-
-| Role | Access |
-|---|---|
-| `svc_finance_personal` | RW on `finance_personal.*`, RO on `personal.*` (budget context), INSERT on `audit.log` |
+DB role grants: `docs/SCHEMAS.md` → DB roles.
 
 ### Tools — personal (Ayah)
 
@@ -227,13 +223,7 @@ Parameters for non-MCP components. Change locations noted — not env vars unles
 
 ### fail2ban
 
-| Parameter | Value | Location |
-|---|---|---|
-| Max retries | 5 failures | Default SSH jail |
-| Find time | 10 minutes | Default SSH jail |
-| Ban time | 1 hour | Default SSH jail |
-
-Change: edit `/etc/fail2ban/jail.local` (or jail.conf). Restart: `sudo systemctl restart fail2ban`.
+Config defaults and edit location: `docs/SECURITY.md` → VPS hardening.
 
 ### Prometheus
 
@@ -256,17 +246,6 @@ Timers are staggered by offset so load does not peak simultaneously.
 
 Change timer interval: edit the corresponding `.timer` file in `systemd/`, run `sudo systemctl daemon-reload && sudo systemctl restart <name>.timer`.
 
-### Hermes agent limits (`hermes/profiles/<name>/config.yaml`)
+### Hermes agent limits
 
-| Parameter | Value | Notes |
-|---|---|---|
-| Max turns per session | 150 | `agent.max_turns` |
-| Gateway timeout | 1800s (30 min) | `agent.gateway_timeout` |
-| Gateway timeout warning | 900s (15 min) | `agent.gateway_timeout_warning` — notifies before hard timeout |
-| LLM API max retries | 3 | `agent.api_max_retries` |
-| MCP discovery timeout | 1.5s | `mcp_discovery_timeout` — how long Hermes waits for `list_tools()` at startup |
-| Tool output max bytes | 50,000 | `tool_output.max_bytes` — truncates larger tool responses |
-| Tool output max lines | 2,000 | `tool_output.max_lines` |
-| Compression threshold | 0.7 (70% of context used) | `compression.threshold` — triggers summarisation. Higher = compresses later, preserves more context. |
-| Compression target ratio | 0.3 (keep 30% of context) | `compression.target_ratio` — higher = keeps more after compression. |
-| Protected last N messages | 10 | `compression.protect_last_n` — never compressed. Lower = more aggressive but less session memory lost. |
+Tunable values (max_turns, gateway_timeout, compression): `docs/HERMES.md` → Agent limits.

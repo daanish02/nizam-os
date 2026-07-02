@@ -90,15 +90,7 @@ All internal services bind to `127.0.0.1` only. Nothing is publicly reachable ex
 
 **At rest**
 
-| File | Encryption | Committed |
-|---|---|---|
-| `secrets/nizam.env` | sops/age (→ `.env.enc`) | No — gitignored |
-| `secrets/nizam.env.enc` | sops/age | Yes |
-| `hermes/profiles/<name>/.env` | sops/age (→ `.env.enc`) | No — gitignored |
-| `hermes/profiles/<name>/.env.enc` | sops/age | Yes |
-| `secrets/nizam-age-key.txt` | Not encrypted — **back up externally before wipe** | No — gitignored |
-
-Unencrypted `.env` files exist only on the VPS at runtime. Never commit them. The `watcher-env.service` auto-encrypts `nizam.env` on save; `hermes-profile-watcher.service` auto-encrypts profile `.env` files on change.
+Secret inventory, file locations, and encryption model: `docs/SECRETS.md` → Storage model.
 
 **Password storage:** Add non-env passwords (e.g. bank portal passwords for finance reconciliation) to `secrets/nizam.env` under clearly named vars (e.g. `BANK_ALINMA_PASSWORD`). They are encrypted at rest with the same age key and never committed in plaintext. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts all secrets.
 
@@ -119,15 +111,7 @@ Unencrypted `.env` files exist only on the VPS at runtime. Never commit them. Th
 
 Applied to all profiles. Any new profile must include all of these.
 
-```yaml
-security:
-  allow_lazy_installs: false   # agents cannot run pip install at runtime
-  redact_secrets: true
-
-approvals:
-  mode: manual                 # every tool call requires user confirmation in Discord
-  cron_mode: deny              # agents cannot create scheduled jobs (except Nazim, Raha)
-```
+Config block applied to all profiles: `docs/AGENTS.md` → Common config.
 
 **`allow_lazy_installs: false` is the most important setting.** Default in Hermes is `true`. Without this, any agent can silently run `pip install <anything>` and execute arbitrary code via a new package.
 

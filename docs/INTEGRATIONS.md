@@ -96,7 +96,7 @@ For server structure, bot creation, intents, webhooks, channel IDs, and `DISCORD
 
 **Free tier:** 1,500 requests/month. At one lookup per transaction (same-day rate cached in `finance.fx_rates`), this is sufficient for daily personal use.
 
-**Caching:** Rate cached by date in `finance.fx_rates`. Same-day FX rate is reused — no duplicate API calls within a day.
+**Caching:** `docs/SERVICES.md` → finance-service → Tunables.
 
 **Failure behavior:** If API is unavailable: `finance-service` asks Ayah to surface the error. Ayah asks user to supply the rate manually. Transaction is not blocked.
 
@@ -128,13 +128,7 @@ For server structure, bot creation, intents, webhooks, channel IDs, and `DISCORD
 
 **Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile, not in shared nizam.env)
 
-**Required scopes (fine-grained PAT):**
-- Contents: Read
-- Pull requests: Read and write (write needed for `create_pull_request_review`)
-- Issues: Read
-- Metadata: Read
-
-Never admin scope. Never `delete_*` tools.
+**Required scopes:** `docs/SECURITY.md` → GitHub access (Reem).
 
 **Runtime:** `npx -y @modelcontextprotocol/server-github` — pulled from npm at Hermes session start. Requires Node.js on VPS (`node --version`; install via nvm or apt if missing).
 
@@ -167,10 +161,8 @@ sudo tailscale status   # verify connected
 
 Not external services but have their own integration surface.
 
-**Prometheus:** `localhost:9090`. Scrapes `node-exporter` (system metrics) + textfile collector (nizam custom metrics from `.prom` files in `/var/lib/prometheus/node-exporter/`).
+**Prometheus:** `localhost:9090`. Scrapes node-exporter (system metrics) + textfile collector (custom `.prom` files in `/var/lib/prometheus/node-exporter/`).
 
-**Grafana:** `localhost:3000` (or via Tailscale). Datasource: Prometheus, UID must be `nizam-prometheus` (hardcoded in dashboard JSONs).
+**Grafana:** `localhost:3000` (or via Tailscale). Datasource UID and dashboard import: `docs/SERVICES.md` → Infrastructure tunables → Prometheus. Dashboard import procedure: `docs/RUNBOOK.md` → Grafana dashboard.
 
-**Dashboard files:** `grafana/agents-dashboard.json`, `grafana/services-dashboard.json`. Import manually after Grafana install.
-
-**Grafana PostgreSQL datasource** (personal + business dashboards, added in Assistant v1): connect as `grafana` role, SELECT-only. Credentials set in Grafana UI, not in nizam.env.
+**Grafana PostgreSQL datasource** (added in Assistant v1): connect as `grafana` role, SELECT-only. Credentials set in Grafana UI, not in nizam.env.

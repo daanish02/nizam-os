@@ -149,7 +149,7 @@ personal.milestones (
 )
 ```
 
-Goals are outcome targets with a target date (e.g. "Read 20 books this year"). Milestones are checkpoints within a goal (e.g. "Read 5 books by March"). A goal can have many milestones.
+See `docs/GLOSSARY.md` for definitions: goals, milestones.
 
 ```sql
 personal.tasks (
@@ -310,7 +310,7 @@ finance_personal.riba_log (
 )
 ```
 
-Hawl: `start_date` is when total assets across all accounts first exceeded the nisab threshold. `end_date = start_date + 354 days`. `zakat_status` tool surfaces the due date. `calculate_zakat` runs at `end_date` to compute the obligation using the current gold price.
+See `docs/GLOSSARY.md` → hawl for the full definition.
 
 Riba entries never appear in P&L or net worth calculations. Separate ledger, separate reporting.
 
