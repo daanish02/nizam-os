@@ -4,7 +4,7 @@ Three layers. Content belongs in exactly one place — cross-references are poin
 
 ---
 
-### Reference &nbsp;`docs/*.md`
+### Reference `docs/*.md`
 
 Stable contracts, one file per domain. Updated when the domain changes, not when phases complete.
 
@@ -25,7 +25,7 @@ Stable contracts, one file per domain. Updated when the domain changes, not when
 
 ---
 
-### Design &nbsp;`specs/*.md`
+### Design `specs/*.md`
 
 One file per phase. What was chosen to build and why — design decisions, schema choices, integration choices. No task lists, no terminal commands.
 
