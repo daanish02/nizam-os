@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-07-01
 
-Single reference for every MCP service: port, transport, tools, consumers, DB role. For schema design and implementation detail, follow the spec links.
+Personal MCP services (Phases 3–5). For business services (Phases 6b+): `docs/future/SERVICES.md`.
 
 ---
 
@@ -14,9 +14,8 @@ Single reference for every MCP service: port, transport, tools, consumers, DB ro
 | 8100 | `knowledge-service` | In repo (stdio now; HTTP port 8100 in Curator v1) |
 | 8101 | `finance-service` | Specced |
 | 8102 | `personal-service` | Specced |
-| 8103 | — (unallocated) | — |
-| 8104 | `crm-service` | Planned |
-| 8105 | `analytics-service` | Planned |
+
+Business service ports (8103–8105): `docs/future/SERVICES.md`.
 
 All services run on `127.0.0.1` only. Hermes connects via `url: http://127.0.0.1:PORT/mcp`.
 
@@ -66,12 +65,13 @@ Auto-detection order: YouTube URL → Content-Type PDF / `.pdf` extension → Co
 ### Approval workflow (all write tools)
 
 ```
-Pass 1 — omit domain/subdomain  → preview (title + content excerpt, word count)
-Pass 2 — supply domain/subdomain/tags, approved=False → show full draft
-Pass 3 — approved=True          → write file + index in DB
+Pass 1 — agent ingests content: extracts/transcribes, suggests areas/tags/title, shows full note draft in Discord
+Pass 2 — user approves → write file + index in DB
+         user rejects  → discard
+         user requests edit → agent revises → repeat Pass 2
 ```
 
-Never skip passes. Never write with `approved=True` without user seeing the draft.
+Agent suggests classification. User never supplies domain/areas/tags manually — that is the agent's job. Never write with `approved=True` without user seeing the draft.
 
 ### Tunables
 
@@ -88,6 +88,7 @@ Never skip passes. Never write with `approved=True` without user seeing the draf
 | Image fetch timeout | 30s | `vision.py` `TIMEOUT` |
 | Vision model | `google/gemini-2.0-flash` | `vision.py` default; override via `VISION_MODEL` env var |
 | Transcript tier order | youtube-transcript-api → yt-dlp VTT → YouTube Data API v3 | `transcript.py` |
+| Search strategy | `hybrid` (default) | `search_vault` `strategy` param: `keyword` (ParadeDB BM25 only), `semantic` (pgvector cosine only), `hybrid` (RRF combining both). Agent picks based on query type. |
 
 ---
 
@@ -106,42 +107,31 @@ One service binary, two DB roles. Personal and business tools share the same HTT
 | Agent | DB role used | Tools included |
 |---|---|---|
 | Ayah (`assistant`) | `svc_finance_personal` | All personal tools |
-| Hala (`cfo`) | `svc_finance_business` | All business tools |
-| Omar (`coo`) | `svc_finance_business` (RO subset) | `business_account_balance`, `invoice_status_report` |
 
 ### DB roles
 
 | Role | Access |
 |---|---|
-| `svc_finance_personal` | RW on `finance.*` (personal), RO on `personal.*` (budget context), INSERT on `audit.log` |
-| `svc_finance_business` | RW on `business.finance.*`, INSERT on `audit.log`. No access to `finance.*` personal tables. |
+| `svc_finance_personal` | RW on `finance_personal.*`, RO on `personal.*` (budget context), INSERT on `audit.log` |
 
 ### Tools — personal (Ayah)
 
 | Tool | Key params | What it does |
 |---|---|---|
-| `record_transaction` | `amount`, `currency`, `direction`, `category`, `date`, `approved=False` | Parse → approval gate → commit to `finance.transactions` |
-| `spending_report` | `period`, `account?`, `category?` | Totals by category for a period, in original + USD |
+| `record_transaction` | `amount`, `currency`, `direction`, `category`, `date`, `approved=False` | Parse → approval gate → commit to `finance_personal.transactions` |
+| `spending_report` | `period`, `account?`, `category?` | Totals by category for a period, in original currency + converted to `default_currency` (configurable tunable — e.g. SAR if you have SAR/AED/INR accounts) |
 | `budget_status` | `period?` | Current spend vs budget per category |
 | `account_balance` | `account?` | Balance per account or all accounts |
 | `reconcile_statement` | `source`, `period` | Bank statement (PDF or CSV via CDN URL) → diff vs ledger |
 | `add_category` | `name`, `parent_id?`, `domain` | Add L1 or L2 spending category |
 | `zakat_status` | — | Current hawl state, assets on record, estimated obligation |
 | `calculate_zakat` | `hawl_id` | Full zakat calc at hawl end — fetches gold price, computes obligation |
-| `log_riba` | `transaction_id`, `amount`, `currency`, `riba_type`, `description` | Route to `finance.riba_log`, not to P&L |
+| `log_riba` | `transaction_id`, `amount`, `currency`, `riba_type`, `description` | Route to `finance_personal.riba_log`, not to P&L |
 | `riba_report` | `period?` | All riba entries for a period |
 
-### Tools — business (Hala, Omar read-subset)
+**Hawl tracking:** `zakat_status` checks whether total assets across all accounts have exceeded the nisab threshold and, if so, when. `start_date` in `finance_personal.zakat_hawl` is the date nisab was first crossed. `end_date = start_date + 354 days`. When `end_date` is reached, `calculate_zakat` fetches the current gold price and computes the obligation. Open a new hawl record each time nisab is crossed after a gap.
 
-| Tool | Consumers | What it does |
-|---|---|---|
-| `record_business_transaction` | Hala | Insert into `business.transactions`, write audit |
-| `create_invoice` | Hala | Insert into `business.invoices` + `business.invoice_items` |
-| `update_invoice_status` | Hala | Advance status: draft → sent → paid → void |
-| `business_spending_report` | Hala | Aggregate spend by category, date range, account |
-| `business_account_balance` | Hala, Omar | Current balance per account or all accounts |
-| `p_and_l_report` | Hala | Income minus expenses for a period, by category |
-| `invoice_status_report` | Hala, Omar | Outstanding, overdue, paid invoices for a period |
+Business finance tools (Hala, Omar): `docs/future/SERVICES.md`.
 
 ### Dependencies
 
@@ -156,7 +146,7 @@ Env vars: `FX_API_KEY` (exchangerate-api.com), `GOLD_API_KEY` (metals-api.com or
 | FX rate cache | Per-date, same-day reuse | `finance.fx_rates` keyed by `(date, from_currency, to_currency)` |
 | FX API free tier | 1,500 requests/month | exchangerate-api.com |
 | Gold price fetch | Only at hawl calculation time | Cached in `finance.zakat_hawl.gold_price_usd` |
-| Base currency | USD | All amounts stored with `amount_base` in USD |
+| Default currency | SAR (configurable) | All amounts stored in `amount_base` converted to `default_currency`. Change via `DEFAULT_CURRENCY` env var in `nizam.env`. |
 | Budget period format | `YYYY-MM` | `finance.budgets.period` |
 
 ---
@@ -180,7 +170,7 @@ Env vars: `FX_API_KEY` (exchangerate-api.com), `GOLD_API_KEY` (metals-api.com or
 
 | Tool | Key params | What it does |
 |---|---|---|
-| `add_habit` | `name`, `description`, `frequency` | Define a new tracked habit |
+| `add_habit` | `name`, `description`, `frequency`, `rest_days?` | Define a tracked habit. `frequency` is an RRule string (e.g. `FREQ=DAILY`, `FREQ=WEEKLY;BYDAY=MO,WE,FR`). `rest_days` lists days that don't break the streak (e.g. `['Saturday', 'Sunday']`). |
 | `log_habit` | `habit_id`, `date?`, `note?` | Record completion for today (or specified date) |
 | `habit_streak` | `habit_id` | Current streak and recent log |
 | `habit_summary` | — | All habits, streaks, last 7 days |
@@ -188,100 +178,29 @@ Env vars: `FX_API_KEY` (exchangerate-api.com), `GOLD_API_KEY` (metals-api.com or
 | `add_milestone` | `goal_id`, `title`, `due_date` | Add milestone to a goal |
 | `update_goal` | `goal_id`, `status?`, `note?` | Change goal status or add progress note |
 | `goal_summary` | — | All active goals with milestone status |
-| `add_task` | `title`, `description?`, `due_date?`, `priority?`, `goal_id?` | Create a task |
+| `add_task` | `title`, `description?`, `due_date?`, `priority?`, `energy?`, `goal_id?` | Create a task. `energy` = low/medium/high effort level required. |
 | `complete_task` | `task_id` | Mark task done |
 | `task_list` | `due_date?`, `goal_id?`, `status?` | Open tasks, filterable |
-| `add_journal` | `entry_date`, `prompt?`, `content`, `tags?`, `approved=False` | Write journal entry — approval-gated |
+| `add_journal` | `entry_date`, `prompt?`, `content`, `approved=False` | Write journal entry — approval-gated |
 | `journal_search` | `query`, `limit?` | Full-text search across journal entries |
 | `journal_entry` | `entry_id` | Read a specific entry |
 
-Habit streak computation is in Python — a gap `> 1 day` in `logged_date` breaks the streak.
+Habit streak computation is in Python — a gap `> 1 day` in `logged_date` breaks the streak, unless the day is in `rest_days`.
+
+**Goals vs milestones:** Goals are outcome targets with a target date (e.g. "Read 20 books this year"). Milestones are checkpoints within a goal with their own due dates (e.g. "Read 5 books by March"). Use `add_milestone` to break a goal into steps.
 
 ### Tunables
 
 | Parameter | Value | Notes |
 |---|---|---|
-| Habit streak break threshold | > 1 day gap in `logged_date` | Computed in Python, not DB |
-| Journal search | Full-text (PostgreSQL `tsvector`) | No vector search — plain FTS |
-
----
-
-## crm-service
-
-**Port:** 8104
-**Transport:** streamable-HTTP
-**Status:** Planned — built in Phase 6c (Omar/COO)
-**Spec:** `docs/specs/20260701-coo-v1-design.md`
-**DB role:** `svc_crm` (RW on `crm.*`, INSERT on `audit.log`. No direct access to `business.finance.*` — Omar reads finance data via finance-service MCP tool includes.)
-**Migration:** `db/migrations/0005_crm_schema.sql` (depends on `0004_business_finance_schema.sql`)
-**Systemd unit:** `systemd/crm-service.service` (to be written at build time)
-
-### Consumers and tool access
-
-| Agent | Tools included |
-|---|---|
-| Omar (`coo`) | All tools (no filter) |
-| Mira (`cmo`) | `client_list`, `deal_pipeline`, `client_case_studies` |
-| Raha (`cos`) | `deal_pipeline` |
-
-### Tools
-
-| Tool | Consumers | What it does |
-|---|---|---|
-| `add_client` | Omar | Insert into `crm.clients` |
-| `update_client` | Omar | Update client status or details |
-| `add_contact` | Omar | Insert into `crm.contacts` |
-| `add_deal` | Omar | Insert into `crm.deals` |
-| `update_deal_stage` | Omar | Advance deal: prospect → proposal → negotiation → won / lost |
-| `add_project` | Omar | Insert into `crm.projects` |
-| `update_project_status` | Omar | Update project status: active → on_hold → delivered → cancelled |
-| `log_interaction` | Omar | Insert into `crm.interactions` (call / email / meeting / note) |
-| `client_list` | Omar, Mira | List clients, filterable by status and industry |
-| `deal_pipeline` | Omar, Raha | All open deals with stage and value |
-| `client_case_studies` | Mira | Won deals with outcomes — for content. Never publish client names without approval. |
-
----
-
-## analytics-service
-
-**Port:** 8105
-**Transport:** streamable-HTTP
-**Status:** Planned — Phase 7 (after Mira/CMO is live)
-**Spec:** not yet written
-**DB role:** `svc_analytics` (to be defined when spec is written)
-**Migration:** `db/migrations/0006_analytics_schema.sql`
-
-### Consumers (planned)
-
-| Agent | Notes |
-|---|---|
-| Mira (`cmo`) | Owns analytics — all tools |
-| Raha (`cos`) | Read-only summary views |
-| Nazim (`admin`) | System-level performance views |
-
-Tools are not specced yet. Write spec at Phase 7 start.
-
----
-
-## External MCP server — GitHub
-
-**Transport:** stdio subprocess via `npx -y @modelcontextprotocol/server-github`
-**Status:** Specced (Reem / CTO, Phase 6d)
-**Spec:** `docs/specs/20260701-cto-v1-design.md`
-
-Not a nizam-os service — pulled from npm at runtime. Requires Node.js on VPS. `GITHUB_PAT` env var (read + PR review scopes only — never admin scope).
-
-### Consumers
-
-| Agent | Tools included |
-|---|---|
-| Reem (`cto`) | `list_issues`, `get_issue`, `list_pull_requests`, `get_pull_request`, `create_pull_request_review`, `list_commits`, `get_commit` |
-
-Excluded tools: `delete_*`, `create_repository`, `manage_webhooks`, `add_collaborator`, and any other write/admin tools.
+| Habit streak break threshold | > 1 day gap in `logged_date` (excluding rest_days) | Computed in Python, not DB |
+| Journal search | ParadeDB BM25 | Consistent with vault search — no tsvector |
 
 ---
 
 ## Infrastructure tunables
+
+Infrastructure tunables apply to both personal and business deployments.
 
 Parameters for non-MCP components. Change locations noted — not env vars unless stated.
 
@@ -320,18 +239,20 @@ Change: edit `/etc/fail2ban/jail.local` (or jail.conf). Restart: `sudo systemctl
 
 | Parameter | Value | Notes |
 |---|---|---|
-| Scrape interval | 15s | node-exporter default — picks up `.prom` file changes within 15s |
+| Scrape interval | 15s | node-exporter default — picks up `.prom` file changes within 15s. Grafana dashboard auto-refresh should match (set to 15s in dashboard settings). |
 | Textfile dir | `/var/lib/prometheus/node-exporter/` | node-exporter `--collector.textfile.directory` |
 | Grafana datasource UID | `nizam-prometheus` | Hardcoded in both dashboard JSON files — must match |
 
 ### Metrics timers
 
-| Script | Timer interval | Output file |
-|---|---|---|
-| `scripts/metrics-llm.py` | Every 1 minute | `nizam-llm.prom` |
-| `scripts/metrics-services.sh` | Every 5 minutes | `nizam-services.prom` |
-| `scripts/metrics-toolcalls.py` | Every 5 minutes | `nizam-toolcalls.prom` |
-| `scripts/watch-inventory.sh` | Hourly | Discord webhook on change |
+| Script | Timer interval | OnCalendar offset | Output file |
+|---|---|---|---|
+| `scripts/metrics-llm.py` | Every 1 minute | :00 | `nizam-llm.prom` |
+| `scripts/metrics-services.sh` | Every 5 minutes | :02 | `nizam-services.prom` |
+| `scripts/metrics-toolcalls.py` | Every 5 minutes | :04 | `nizam-toolcalls.prom` |
+| `scripts/watch-inventory.sh` | Hourly | :30 | Discord webhook on change |
+
+Timers are staggered by offset so load does not peak simultaneously.
 
 Change timer interval: edit the corresponding `.timer` file in `systemd/`, run `sudo systemctl daemon-reload && sudo systemctl restart <name>.timer`.
 
@@ -346,6 +267,6 @@ Change timer interval: edit the corresponding `.timer` file in `systemd/`, run `
 | MCP discovery timeout | 1.5s | `mcp_discovery_timeout` — how long Hermes waits for `list_tools()` at startup |
 | Tool output max bytes | 50,000 | `tool_output.max_bytes` — truncates larger tool responses |
 | Tool output max lines | 2,000 | `tool_output.max_lines` |
-| Compression threshold | 0.5 (50% of context used) | `compression.threshold` — triggers summarisation |
-| Compression target ratio | 0.2 (keep 20% of context) | `compression.target_ratio` |
-| Protected last N messages | 20 | `compression.protect_last_n` — never compressed |
+| Compression threshold | 0.7 (70% of context used) | `compression.threshold` — triggers summarisation. Higher = compresses later, preserves more context. |
+| Compression target ratio | 0.3 (keep 30% of context) | `compression.target_ratio` — higher = keeps more after compression. |
+| Protected last N messages | 10 | `compression.protect_last_n` — never compressed. Lower = more aggressive but less session memory lost. |

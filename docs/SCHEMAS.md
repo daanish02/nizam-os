@@ -1,10 +1,12 @@
 # Nizam-OS — Database Schemas
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-02
 
-All schemas in one place. For implementation detail, FK constraints, and role grants see the migration files in `db/migrations/`. For design decisions see the linked specs.
+Personal schemas (Phases 1–5). For business schemas (Phases 6b+): `docs/future/SCHEMAS.md`. For implementation detail, FK constraints, and role grants see the migration files in `db/migrations/`. For design decisions see the linked specs.
 
-Single PostgreSQL instance. Database: `nizam`.
+Single PostgreSQL instance. Database: `nizam`. Database owner: `vazir` (PostgreSQL superuser). Service roles are granted minimum permissions by `vazir`.
+
+Migrations are managed via dbmate. Run: `dbmate up` from the repo root. Manual emergency fallback: `psql -U vazir -d nizam -f db/migrations/<file>.sql`.
 
 ---
 
@@ -13,30 +15,27 @@ Single PostgreSQL instance. Database: `nizam`.
 | Migration | Schema | Status | Spec |
 |---|---|---|---|
 | `0001_knowledge_schema.sql` | `knowledge` | **Needs redesign** | `docs/specs/20260701-curator-v1-design.md` |
-| `0002_personal_schema.sql` | `personal`, `finance` (personal) | **Specced** | `docs/specs/20260701-assistant-v1-design.md` |
+| `0002_personal_schema.sql` | `personal`, `finance_personal` | **Specced** | `docs/specs/20260701-assistant-v1-design.md` |
 | `0003_audit_schema.sql` | `audit` | **Specced** | `docs/specs/20260701-assistant-v1-design.md` |
-| `0004_business_finance_schema.sql` | `business.finance` | **Planned** | `docs/specs/20260701-cfo-v1-design.md` |
-| `0005_crm_schema.sql` | `crm` | **Planned** | `docs/specs/20260701-coo-v1-design.md` |
-| `0006_analytics_schema.sql` | `analytics` | **Planned** | not yet specced |
 
-Migration order matters: `0003` before `0004` (audit.log must exist). `0004` before `0005` (`crm.clients` FK from invoices). `0005` before Hala profile is enabled.
+Migration order matters: `0001` → `0002` → `0003`.
+
+Business schema migrations (0004–0006): `docs/future/SCHEMAS.md`.
 
 ---
 
 ## DB roles
 
+Business service roles: `docs/future/SCHEMAS.md`.
+
 | Role | Service | Access |
 |---|---|---|
 | `svc_litellm` | LiteLLM proxy | Owns `litellm` schema (Prisma tables) |
 | `svc_knowledge` | `knowledge-service` | RW on `knowledge.*`, INSERT on `knowledge.vault_audit` |
-| `svc_finance_personal` | `finance-service` | RW on `finance.*` (personal), RO on `personal.*`, INSERT on `audit.log` |
+| `svc_finance_personal` | `finance-service` | RW on `finance_personal.*`, RO on `personal.*`, INSERT on `audit.log` |
 | `svc_personal` | `personal-service` | RW on `personal.*`, INSERT on `audit.log` |
-| `svc_finance_business` | `finance-service` | RW on `business.finance.*`, INSERT on `audit.log`. No access to `finance.*` personal. |
-| `svc_crm` | `crm-service` | RW on `crm.*`, INSERT on `audit.log`. No direct access to `business.finance.*`. |
 | `svc_analytics` | `analytics-service` | TBD (spec not written) |
-| `grafana` | Grafana | SELECT-only on `knowledge.*`, `personal.*`, `finance.*`, `business.finance.*`, `crm.*`, `audit.log` |
-
-`svc_finance_personal` and `svc_finance_business` are separate roles. A compromise of one does not expose the other.
+| `grafana` | Grafana | SELECT-only on `knowledge.*`, `personal.*`, `finance_personal.*`, `audit.log` |
 
 ---
 
@@ -51,23 +50,31 @@ knowledge.vault_index (
     id            BIGSERIAL     PRIMARY KEY,
     file_path     TEXT          NOT NULL UNIQUE,
     title         TEXT          NOT NULL,
-    domain        TEXT          NOT NULL,
-    subdomain     TEXT          NOT NULL,
+    areas         TEXT[]        NOT NULL DEFAULT '{}',
     source        TEXT          NOT NULL,     -- article|video|book|paper|course|podcast|post|thought
     source_url    TEXT,
     source_author TEXT,
     tags          TEXT[]        NOT NULL DEFAULT '{}',
-    status        TEXT          NOT NULL DEFAULT 'raw',     -- raw|processed|evergreen
+    status        TEXT          NOT NULL DEFAULT 'raw',     -- raw=ingested not reviewed | processed=curated canonical | evergreen=stable no update needed
     confidence    TEXT          NOT NULL DEFAULT 'medium',  -- low|medium|high
     content       TEXT          NOT NULL,
     content_hash  TEXT          NOT NULL,
-    fts_vector    TSVECTOR      GENERATED (to_tsvector of title + content),
-    date_created  DATE,
-    date_modified DATE,
-    indexed_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    date_created  DATE,          -- original content creation date (from source)
+    date_modified DATE,          -- original content modification date (from source)
+    indexed_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),     -- when first added to DB
+    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()      -- when content or status last changed
 )
+```
 
+**`areas` taxonomy:** Multi-value controlled vocabulary. A note can belong to multiple areas — overlap is expected and allowed. Enforced by knowledge-service at write time; adding a new area requires a code change.
+
+Controlled values: `technology`, `science`, `business`, `finance-economics`, `philosophy-ethics`, `health-wellness`, `arts-culture`, `history-society`, `language-communication`, `personal-development`.
+
+`tags` is separate, free-form supplementary metadata (people, projects, events, etc.).
+
+`date_created` and `date_modified` are the original content's dates (e.g. when an article was published). `indexed_at` and `updated_at` track the DB record lifecycle — different concepts.
+
+```sql
 knowledge.vault_embeddings (
     id           BIGSERIAL     PRIMARY KEY,
     note_path    TEXT          NOT NULL UNIQUE → knowledge.vault_index(file_path) CASCADE,
@@ -76,7 +83,11 @@ knowledge.vault_embeddings (
     model        TEXT          NOT NULL DEFAULT 'google/gemini-embedding-2',
     updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 )
+```
 
+Embeddings are generated by knowledge-service on ingestion — not auto-generated by PostgreSQL. Must be created explicitly. Separate table because embedding generation is async and expensive; a note can be indexed before its embedding is computed.
+
+```sql
 knowledge.vault_audit (
     id         BIGSERIAL     PRIMARY KEY,
     profile    TEXT          NOT NULL,
@@ -89,7 +100,9 @@ knowledge.vault_audit (
 )
 ```
 
-**Indexes:** GIN on `fts_vector`, GIN on `tags`, btree on `(domain, subdomain)`, btree on `status`, BM25 on `(id, title, content)` via ParadeDB, HNSW on `embedding` (cosine ops).
+`knowledge.vault_audit` tracks ingestion workflow events (preview, draft, approval, rejection). The `audit` schema (migration `0003`) is the cross-service row-level mutation trail. Both exist and serve different purposes.
+
+**Indexes:** GIN on `areas`, GIN on `tags`, btree on `status`, BM25 on `(id, title, content)` via ParadeDB, HNSW on `embedding` (cosine ops).
 
 ---
 
@@ -104,7 +117,8 @@ personal.habits (
     id          BIGSERIAL   PRIMARY KEY,
     name        TEXT        NOT NULL,
     description TEXT,
-    frequency   TEXT        NOT NULL,   -- daily|weekly|etc
+    frequency   TEXT        NOT NULL,   -- rrule string (e.g. FREQ=DAILY, FREQ=WEEKLY;BYDAY=MO,WE,FR)
+    rest_days   TEXT[]      NOT NULL DEFAULT '{}',   -- days that don't break streak (e.g. ['Saturday', 'Sunday'])
     active      BOOLEAN     NOT NULL DEFAULT true,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
@@ -133,13 +147,18 @@ personal.milestones (
     due_date     DATE,
     completed_at TIMESTAMPTZ
 )
+```
 
+Goals are outcome targets with a target date (e.g. "Read 20 books this year"). Milestones are checkpoints within a goal (e.g. "Read 5 books by March"). A goal can have many milestones.
+
+```sql
 personal.tasks (
     id          BIGSERIAL   PRIMARY KEY,
     title       TEXT        NOT NULL,
     description TEXT,
     due_date    DATE,
     priority    TEXT,                   -- low|medium|high
+    energy      TEXT,                   -- low|medium|high — effort level required to complete
     status      TEXT        NOT NULL DEFAULT 'open',   -- open|done
     goal_id     BIGINT      → personal.goals(id) NULLABLE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -150,21 +169,26 @@ personal.journal (
     entry_date  DATE        NOT NULL,
     prompt      TEXT,
     content     TEXT        NOT NULL,
-    tags        TEXT[]      NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 ```
 
+Journal has no tags — entries are found via BM25 full-text search (ParadeDB), consistent with vault search.
+
+**Indexes:** BM25 on `personal.journal(id, content)` via ParadeDB, btree on `personal.tasks(due_date, status)`, btree on `personal.habit_logs(habit_id, logged_date)`.
+
 ---
 
-## `finance` schema (personal)
+## `finance_personal` schema
 
 **Migration:** `db/migrations/0002_personal_schema.sql` (same migration as `personal`)
 **Status:** Specced
 **Service:** `finance-service` (`svc_finance_personal`)
 
+Renamed from `finance` to `finance_personal`. Entirely separate from `finance_business` — separate role, separate migration connection. A compromise of one does not expose the other.
+
 ```sql
-finance.accounts (
+finance_personal.accounts (
     id          BIGSERIAL   PRIMARY KEY,
     name        TEXT        NOT NULL,
     type        TEXT        NOT NULL,   -- cash|bank|savings
@@ -172,21 +196,21 @@ finance.accounts (
     is_active   BOOLEAN     NOT NULL DEFAULT true
 )
 
-finance.categories (
+finance_personal.categories (
     id          BIGSERIAL   PRIMARY KEY,
     name        TEXT        NOT NULL,
-    parent_id   BIGINT      → finance.categories(id) NULLABLE,   -- null = L1
+    parent_id   BIGINT      → finance_personal.categories(id) NULLABLE,   -- null = L1
     domain      TEXT        NOT NULL
 )
 
-finance.transactions (
+finance_personal.transactions (
     id                BIGSERIAL   PRIMARY KEY,
-    account_id        BIGINT      → finance.accounts(id),
-    category_id       BIGINT      → finance.categories(id),
+    account_id        BIGINT      → finance_personal.accounts(id),
+    category_id       BIGINT      → finance_personal.categories(id),
     amount_original   NUMERIC     NOT NULL,
     currency_original TEXT        NOT NULL,
-    amount_base       NUMERIC     NOT NULL,   -- USD
-    currency_base     TEXT        NOT NULL DEFAULT 'USD',
+    amount_base       NUMERIC     NOT NULL,   -- in default_currency (see tunables)
+    currency_base     TEXT        NOT NULL,   -- default_currency value
     fx_rate           NUMERIC     NOT NULL,
     fx_date           DATE        NOT NULL,
     direction         TEXT        NOT NULL,   -- in|out
@@ -198,7 +222,23 @@ finance.transactions (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 
-finance.fx_rates (
+finance_personal.transfers (
+    id                BIGSERIAL   PRIMARY KEY,
+    from_account_id   BIGINT      → finance_personal.accounts(id),
+    to_account_id     BIGINT      → finance_personal.accounts(id),
+    amount_original   NUMERIC     NOT NULL,
+    currency_original TEXT        NOT NULL,
+    amount_received   NUMERIC     NOT NULL,
+    currency_received TEXT        NOT NULL,
+    fx_rate           NUMERIC,
+    transfer_date     DATE        NOT NULL,
+    fee               NUMERIC,
+    fee_currency      TEXT,
+    description       TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+
+finance_personal.fx_rates (
     date          DATE    NOT NULL,
     from_currency TEXT    NOT NULL,
     to_currency   TEXT    NOT NULL,
@@ -208,19 +248,39 @@ finance.fx_rates (
     PRIMARY KEY (date, from_currency, to_currency)
 )
 
-finance.budgets (
+finance_personal.budgets (
     id          BIGSERIAL   PRIMARY KEY,
-    category_id BIGINT      → finance.categories(id),
+    category_id BIGINT      → finance_personal.categories(id),
     period      TEXT        NOT NULL,   -- YYYY-MM
     amount      NUMERIC     NOT NULL,
     currency    TEXT        NOT NULL,
     starts_at   DATE        NOT NULL
 )
 
-finance.zakat_hawl (
+finance_personal.recurring (
+    id              BIGSERIAL   PRIMARY KEY,
+    description     TEXT        NOT NULL,
+    amount          NUMERIC     NOT NULL,
+    currency        TEXT        NOT NULL,
+    direction       TEXT        NOT NULL,   -- in|out
+    account_id      BIGINT      → finance_personal.accounts(id),
+    category_id     BIGINT      → finance_personal.categories(id),
+    frequency       TEXT        NOT NULL,   -- rrule string
+    next_due_date   DATE        NOT NULL,
+    total_periods   INT,                    -- null = indefinite
+    periods_elapsed INT         NOT NULL DEFAULT 0,
+    is_active       BOOLEAN     NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+```
+
+`recurring` covers amortizations, loan payments, subscriptions, and any repeating transaction. `next_due_date` advances each time a period is logged.
+
+```sql
+finance_personal.zakat_hawl (
     id                  BIGSERIAL   PRIMARY KEY,
-    start_date          DATE        NOT NULL,
-    end_date            DATE        NOT NULL,
+    start_date          DATE        NOT NULL,   -- date total assets first crossed nisab threshold
+    end_date            DATE        NOT NULL,   -- start_date + 354 days (lunar year)
     nisab_gold_grams    NUMERIC     NOT NULL,
     gold_price_usd      NUMERIC     NOT NULL,
     nisab_usd           NUMERIC     NOT NULL,
@@ -230,25 +290,27 @@ finance.zakat_hawl (
     calculated_at       TIMESTAMPTZ
 )
 
-finance.zakat_assets (
+finance_personal.zakat_assets (
     id          BIGSERIAL   PRIMARY KEY,
-    hawl_id     BIGINT      → finance.zakat_hawl(id),
+    hawl_id     BIGINT      → finance_personal.zakat_hawl(id),
     asset_type  TEXT        NOT NULL,
     amount_usd  NUMERIC     NOT NULL,
     description TEXT
 )
 
-finance.riba_log (
+finance_personal.riba_log (
     id                BIGSERIAL   PRIMARY KEY,
-    transaction_id    BIGINT      → finance.transactions(id),
+    transaction_id    BIGINT      → finance_personal.transactions(id),
     amount_original   NUMERIC     NOT NULL,
     currency_original TEXT        NOT NULL,
-    amount_usd        NUMERIC     NOT NULL,
+    amount_base       NUMERIC     NOT NULL,
     riba_type         TEXT        NOT NULL,
     description       TEXT,
     logged_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 ```
+
+Hawl: `start_date` is when total assets across all accounts first exceeded the nisab threshold. `end_date = start_date + 354 days`. `zakat_status` tool surfaces the due date. `calculate_zakat` runs at `end_date` to compute the obligation using the current gold price.
 
 Riba entries never appear in P&L or net worth calculations. Separate ledger, separate reporting.
 
@@ -262,186 +324,16 @@ Riba entries never appear in P&L or net worth calculations. Separate ledger, sep
 
 ```sql
 audit.log (
-    id          BIGSERIAL   PRIMARY KEY,
-    schema_name TEXT        NOT NULL,
-    table_name  TEXT        NOT NULL,
-    operation   TEXT        NOT NULL,   -- INSERT|UPDATE|DELETE
-    actor       TEXT        NOT NULL,   -- Hermes profile name
-    row_id      BIGINT,
+    id           BIGSERIAL   PRIMARY KEY,
+    schema_name  TEXT        NOT NULL,
+    table_name   TEXT        NOT NULL,
+    operation    TEXT        NOT NULL,   -- INSERT|UPDATE|DELETE
+    actor        TEXT        NOT NULL,   -- Hermes profile name
+    row_id       BIGINT,
     before_state JSONB,
     after_state  JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 ```
 
 No `UPDATE` or `DELETE` granted to any service role. Append-only by grant, not trigger.
-
----
-
-## `business.finance` schema
-
-**Migration:** `db/migrations/0004_business_finance_schema.sql`
-**Depends on:** `0003_audit_schema.sql`
-**Status:** Planned
-**Service:** `finance-service` (`svc_finance_business`)
-
-```sql
-business.accounts (
-    id          BIGSERIAL   PRIMARY KEY,
-    name        TEXT        NOT NULL,
-    type        TEXT        NOT NULL,
-    currency    TEXT        NOT NULL,
-    is_active   BOOLEAN     NOT NULL DEFAULT true
-)
-
-business.categories (
-    id          BIGSERIAL   PRIMARY KEY,
-    name        TEXT        NOT NULL,
-    parent_id   BIGINT      → business.categories(id) NULLABLE,
-    domain      TEXT        NOT NULL
-)
-
-business.transactions (
-    id                BIGSERIAL   PRIMARY KEY,
-    account_id        BIGINT      → business.accounts(id),
-    category_id       BIGINT      → business.categories(id),
-    amount_original   NUMERIC     NOT NULL,
-    currency_original TEXT        NOT NULL,
-    amount_base       NUMERIC     NOT NULL,
-    currency_base     TEXT        NOT NULL DEFAULT 'USD',
-    fx_rate           NUMERIC     NOT NULL,
-    fx_date           DATE        NOT NULL,
-    direction         TEXT        NOT NULL,   -- income|expense
-    counterparty      TEXT,
-    description       TEXT,
-    transaction_date  DATE        NOT NULL,
-    receipt_ref       TEXT,
-    is_riba           BOOLEAN     NOT NULL DEFAULT false,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-
-business.fx_rates (
-    date          DATE    NOT NULL,
-    from_currency TEXT    NOT NULL,
-    to_currency   TEXT    NOT NULL,
-    rate          NUMERIC NOT NULL,
-    source        TEXT,
-    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (date, from_currency, to_currency)
-)
-
-business.budgets (
-    id          BIGSERIAL   PRIMARY KEY,
-    category_id BIGINT      → business.categories(id),
-    period      TEXT        NOT NULL,
-    amount      NUMERIC     NOT NULL,
-    currency    TEXT        NOT NULL,
-    starts_at   DATE        NOT NULL
-)
-
-business.invoices (
-    id             BIGSERIAL   PRIMARY KEY,
-    client_id      BIGINT      → crm.clients(id) NULLABLE until 0005 runs,
-    invoice_number TEXT        NOT NULL UNIQUE,
-    status         TEXT        NOT NULL DEFAULT 'draft',  -- draft|sent|paid|void
-    issued_date    DATE        NOT NULL,
-    due_date       DATE        NOT NULL,
-    paid_date      DATE,
-    subtotal       NUMERIC     NOT NULL,
-    currency       TEXT        NOT NULL,
-    notes          TEXT,
-    pdf_path       TEXT
-)
-
-business.invoice_items (
-    id           BIGSERIAL   PRIMARY KEY,
-    invoice_id   BIGINT      → business.invoices(id),
-    description  TEXT        NOT NULL,
-    quantity     NUMERIC     NOT NULL,
-    unit_price   NUMERIC     NOT NULL,
-    currency     TEXT        NOT NULL
-)
-
-business.invoice_payments (
-    id             BIGSERIAL   PRIMARY KEY,
-    invoice_id     BIGINT      → business.invoices(id),
-    transaction_id BIGINT      → business.transactions(id),
-    amount         NUMERIC     NOT NULL,
-    paid_at        TIMESTAMPTZ NOT NULL
-)
-```
-
-`client_id` FK deferred: `crm.clients` doesn't exist until `0005` runs. Make nullable first, add constraint after `0005`.
-
----
-
-## `crm` schema
-
-**Migration:** `db/migrations/0005_crm_schema.sql`
-**Depends on:** `0004_business_finance_schema.sql`
-**Status:** Planned
-**Service:** `crm-service` (`svc_crm`)
-
-```sql
-crm.clients (
-    id         BIGSERIAL   PRIMARY KEY,
-    name       TEXT        NOT NULL,
-    industry   TEXT,
-    status     TEXT        NOT NULL DEFAULT 'prospect',  -- prospect|active|inactive
-    country    TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-
-crm.contacts (
-    id              BIGSERIAL   PRIMARY KEY,
-    client_id       BIGINT      → crm.clients(id),
-    name            TEXT        NOT NULL,
-    role            TEXT,
-    email           TEXT,
-    phone           TEXT,
-    primary_contact BOOLEAN     NOT NULL DEFAULT false
-)
-
-crm.deals (
-    id             BIGSERIAL   PRIMARY KEY,
-    client_id      BIGINT      → crm.clients(id),
-    title          TEXT        NOT NULL,
-    stage          TEXT        NOT NULL DEFAULT 'prospect',
-    value          NUMERIC,
-    currency       TEXT,
-    expected_close DATE,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-
-crm.projects (
-    id         BIGSERIAL   PRIMARY KEY,
-    client_id  BIGINT      → crm.clients(id),
-    deal_id    BIGINT      → crm.deals(id) NULLABLE,
-    title      TEXT        NOT NULL,
-    status     TEXT        NOT NULL DEFAULT 'active',
-    start_date DATE,
-    end_date   DATE
-)
-
-crm.interactions (
-    id         BIGSERIAL   PRIMARY KEY,
-    client_id  BIGINT      → crm.clients(id),
-    contact_id BIGINT      → crm.contacts(id) NULLABLE,
-    type       TEXT        NOT NULL,   -- call|email|meeting|note
-    notes      TEXT,
-    occurred_at TIMESTAMPTZ NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
-```
-
-`deal.stage` values: `prospect → proposal → negotiation → won → lost`
-`project.status` values: `active → on_hold → delivered → cancelled`
-
----
-
-## `analytics` schema
-
-**Migration:** `db/migrations/0006_analytics_schema.sql`
-**Status:** Planned — spec not yet written. Build when Mira (Phase 6e) starts.
-
-Stores post and campaign performance metrics. Populated by `analytics-service` pulling from social platform APIs or manual input.

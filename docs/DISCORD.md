@@ -36,22 +36,12 @@ Nazim's operational channels.
 | `#learning` | Noor | Knowledge ingestion — send URLs, PDFs, YouTube links |
 | `#chat` | Ayah | General personal assistant |
 | `#finances` | Ayah | Transaction recording, spending reports, zakat |
-| `#habits` | Ayah | Habit tracking |
-| `#goals-tasks` | Ayah | Goals and task management |
-| `#journal` | Ayah | Daily journal entries |
+| `#planner` | Ayah | Habits, goals, tasks — all in one channel |
+| `#briefing` | Ayah | Morning and evening briefings. Journal entries added as threads inside this channel. |
 
 Ayah's Personal channels are all `free_response_channels` — no @mention required.
 
-### Arc Systems
-
-| Channel | Agent | Notes |
-|---|---|---|
-| `#boardroom` | Raha | Weekly C-suite synthesis, strategic decisions |
-| `#biz-chat` | Raha | Ad-hoc business queries routed to C-suite |
-| `#cfo-office` | Hala | Business finance, invoices, P&L |
-| `#coo-office` | Omar | CRM, project delivery, client status |
-| `#cto-office` | Reem | Codebase health, PR review, tech debt |
-| `#cmo-office` | Mira | Content strategy, marketing campaigns |
+**Arc Systems (business agents, Phases 6a–6e):** `docs/future/DISCORD.md`.
 
 ---
 
@@ -108,8 +98,10 @@ Two webhooks used for automated notifications. Both are stored in `secrets/nizam
 
 | Variable | Channel | Purpose |
 |---|---|---|
-| `DISCORD_ADMIN_WEBHOOK` | `#alerts` or `#admin` | Inventory changes, system alerts |
-| `NIZAM_INVENTORY_WATCHER` | Same or separate channel | Inventory-change notifications from `watch-inventory.sh` |
+| `DISCORD_ADMIN_WEBHOOK` | `#alerts` | System alerts, metric threshold notifications |
+| `NIZAM_INVENTORY_WATCHER` | `#alerts` | Software/file inventory changes from `watch-inventory.sh` |
+
+Grafana handles service health alerting. `NIZAM_INVENTORY_WATCHER` is for software inventory changes (file additions, package updates) — not service monitoring.
 
 **Note:** `NIZAM_INVENTORY_WATCHER` is missing from `secrets/nizam.env.example` — add it on rebuild.
 

@@ -32,6 +32,8 @@ Allowed inbound: 22 (SSH), 80, 443, Tailscale subnet (100.64.0.0/10)
 Default policy:  deny inbound, allow outbound
 ```
 
+80 and 443 are open for Let's Encrypt ACME challenges (port 80) and reverse proxy if any service is ever publicly served (port 443). If the VPS stays fully private-only via Tailscale, both can be closed: `sudo ufw delete allow 80 && sudo ufw delete allow 443`.
+
 Check: `sudo ufw status verbose`
 
 **fail2ban**
@@ -98,6 +100,8 @@ All internal services bind to `127.0.0.1` only. Nothing is publicly reachable ex
 
 Unencrypted `.env` files exist only on the VPS at runtime. Never commit them. The `watcher-env.service` auto-encrypts `nizam.env` on save; `hermes-profile-watcher.service` auto-encrypts profile `.env` files on change.
 
+**Password storage:** Add non-env passwords (e.g. bank portal passwords for finance reconciliation) to `secrets/nizam.env` under clearly named vars (e.g. `BANK_ALINMA_PASSWORD`). They are encrypted at rest with the same age key and never committed in plaintext. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts all secrets.
+
 **In transit**
 
 - Agent → LiteLLM → OpenRouter: HTTPS
@@ -162,8 +166,8 @@ Each service connects as its own PostgreSQL role. Roles are not shared between s
 | Role | What it can do | What it cannot do |
 |---|---|---|
 | `svc_knowledge` | RW `knowledge.*`, INSERT `knowledge.vault_audit` | Touch any other schema |
-| `svc_finance_personal` | RW `finance.*`, RO `personal.*`, INSERT `audit.log` | Access `business.finance.*` |
-| `svc_finance_business` | RW `business.finance.*`, INSERT `audit.log` | Access `finance.*` personal tables |
+| `svc_finance_personal` | RW `finance_personal.*`, RO `personal.*`, INSERT `audit.log` | Access `finance_business.*` |
+| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | Access `finance_personal.*` |
 | `svc_personal` | RW `personal.*`, INSERT `audit.log` | Access `finance.*` or `business.*` |
 | `svc_crm` | RW `crm.*`, INSERT `audit.log` | Direct access to `business.finance.*` |
 | `grafana` | SELECT only on all schemas | Any write |
@@ -241,22 +245,22 @@ audit.log (id, schema_name, table_name, operation, actor, row_id, before_state, 
 
 ---
 
-## Delegation security (Raha)
+## Delegation security (Reem sandbox agents)
 
-Raha is the only agent that can spawn child agents. Controls:
+Reem is the only agent with `delegation` toolset. Raha uses `kanban` for C-suite coordination — she does not spawn child agents.
 
 ```yaml
 delegation:
-  max_spawn_depth: 1        # Raha → Hala OK. Hala → anyone: blocked.
-  subagent_auto_approve: false   # child agents still require Discord approval for tool calls
-  max_concurrent_children: 3
+  max_spawn_depth: 1        # Reem → sandbox agent OK. Sandbox agent → anyone: blocked.
+  subagent_auto_approve: false   # sandbox agent tool calls still require Discord approval
+  max_concurrent_children: 2
 ```
 
-**Context isolation:** Raha serialises all relevant context into each `delegate_task` call. Child agents start with zero session history — they cannot read prior Raha sessions or other child agent outputs.
+**Context isolation:** Reem serialises all relevant context into each sandbox spawn. Sandbox agents start with zero session history.
 
-**Channel isolation:** Child agents (Hala, Omar, Reem, Mira) never post to Discord directly during delegation. Raha owns the reply. This prevents child agents from leaking delegation context or intermediate results to Discord.
+**Channel isolation:** Sandbox agents never post to Discord directly. Reem synthesises their output and posts in `#cto-office`.
 
-**No MCP for Raha:** Raha cannot directly query any database or service. If she needs data, she delegates. This means Raha cannot be tricked via prompt injection into directly accessing data outside her mandate — she has no tools to do so.
+**No MCP for Raha:** Raha cannot directly query any database or service. She creates kanban tasks; C-suite agents respond independently. This means Raha cannot be tricked into directly accessing data outside her mandate — she has no MCP tools to do so.
 
 ---
 

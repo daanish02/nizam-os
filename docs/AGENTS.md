@@ -1,8 +1,8 @@
 # Nizam-OS — Agent Roster
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-02
 
-High-level reference for all eight agents. For full design decisions, behavioral rules, SOUL/AGENTS.md content, and implementation detail see each agent's spec.
+Personal agents (Phases 3–5). For business agents (Phases 6a–6e): `docs/future/AGENTS.md`.
 
 ---
 
@@ -13,11 +13,6 @@ High-level reference for all eight agents. For full design decisions, behavioral
 | Nazim | `admin` | System admin | `docs/specs/20260701-admin-v1-design.md` |
 | Noor | `curator` | Knowledge curator | `docs/specs/20260701-curator-v1-design.md` |
 | Ayah | `assistant` | Personal assistant | `docs/specs/20260701-assistant-v1-design.md` |
-| Raha | `cos` | Chief of Staff | `docs/specs/20260701-cos-v1-design.md` |
-| Hala | `cfo` | CFO | `docs/specs/20260701-cfo-v1-design.md` |
-| Omar | `coo` | COO | `docs/specs/20260701-coo-v1-design.md` |
-| Reem | `cto` | CTO | `docs/specs/20260701-cto-v1-design.md` |
-| Mira | `cmo` | CMO | `docs/specs/20260701-cmo-v1-design.md` |
 
 Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/deepseek-v4-flash` via `custom:litellm`. Compression: `deepseek/deepseek-v3-0324` (pinned per profile).
 
@@ -28,21 +23,18 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 **Profile:** `hermes/profiles/admin/`
 **Channels:** `#admin`, `#alerts`, `#warning`, `#sandbox` (System category — full category access)
 
-**Mandate:** Infrastructure health, incident response, service restarts, Hermes guide. Has `terminal` + `file` for diagnostic commands. Sudo scoped to service restarts only via `/etc/sudoers.d/nazim-hermes`.
+**Mandate:** Infrastructure health, incident response, service restarts, Hermes guide. Has `terminal` + `file` for diagnostic commands. Sudo scoped to service restarts only via `/etc/sudoers.d/nazim-hermes`. All scheduled health checks created via Hermes `cronjob` toolset — not native system cron.
 
 **Hermes toolsets:** `terminal`, `file`, `memory`, `skills`, `clarify`, `cronjob`, `web`
 
-**MCP servers:**
+**MCP servers:** None. Diagnostics come from terminal and journalctl — vault access not needed.
 
-| Server | Access |
-|---|---|
-| `knowledge-service` :8100 | `search_vault`, `get_note`, `list_notes` (read-only) |
-
-**Hermes native tools Nazim can use:** `terminal` (full system access, scoped by sudoers), `file` (read VPS config files), `cronjob` (health check schedule)
+**`#alerts` channel:** Receives both Nazim-posted alerts and webhook-posted notifications (inventory watcher, metrics scripts via `DISCORD_ADMIN_WEBHOOK`). Dual source — no conflict. Nazim does not need to read webhook messages.
 
 **Key constraints:**
 - Sudo restricted to specific `systemctl restart` commands only
 - Does not write to knowledge vault
+- Scheduled jobs via Hermes `cronjob` only — never `crontab -e`
 
 ---
 
@@ -51,9 +43,9 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 **Profile:** `hermes/profiles/curator/`
 **Channel:** `#learning` (Personal category)
 
-**Mandate:** Ingest content into `~/nizam-vault/commons/`. All writes approval-gated (3-pass: preview → draft → write). MECE taxonomy enforced. Never skips approval.
+**Mandate:** Ingest content into `~/nizam-vault/commons/`. All writes approval-gated (2-pass: Noor drafts note with suggested areas/tags → user approves, rejects, or requests edit). Never skips approval. Vault walks via Hermes `cronjob` (periodic re-indexing or status updates).
 
-**Hermes toolsets:** `memory`, `skills`, `clarify`
+**Hermes toolsets:** `memory`, `skills`, `clarify`, `cronjob`
 
 **Discord config:** `allow_any_attachment: true`, `max_attachment_bytes: 33554432` — accepts PDF and image file uploads from Discord
 
@@ -63,14 +55,15 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 |---|---|
 | `knowledge-service` :8100 | All tools (owns all vault writes) |
 
-**10 MECE domains:** technology, science, business, finance-economics, philosophy-ethics, health-wellness, arts-culture, history-society, language-communication, personal-development
-
+**Area vocabulary (enforced, multi-value):** `technology`, `science`, `business`, `finance-economics`, `philosophy-ethics`, `health-wellness`, `arts-culture`, `history-society`, `language-communication`, `personal-development`. A note may belong to multiple areas. Noor suggests areas; user corrects if wrong at approval step.
 ---
 
 ## Ayah — Personal Assistant
 
 **Profile:** `hermes/profiles/assistant/`
-**Channels:** `#chat`, `#finances`, `#habits`, `#goals-tasks`, `#journal` (Personal category — all five are free_response_channels, no @mention needed)
+**Channels:** `#chat`, `#finances`, `#planner`, `#briefing` (Personal category — all four are free_response_channels, no @mention needed)
+
+`#planner` — habits, goals, tasks (merged). `#briefing` — morning/evening briefings posted by Ayah; journal entries added as threads inside `#briefing`.
 
 **Mandate:** Personal finance (multicurrency, zakat, riba), habits, goals, tasks, journal. All finance writes require user confirmation before committing. Never commits with `approved=False`.
 
@@ -86,128 +79,9 @@ Phase and build status: `docs/ROADMAP.md`. Model: all profiles use `deepseek/dee
 | `personal-service` :8102 | All tools (no filter) |
 
 **Key constraints:**
-- Never touches `business.finance.*` schema
+- Never touches `finance_business.*` schema
 - Riba lines routed to `log_riba`, never to `record_transaction`
 - FX rate always shown before approval
-
----
-
-## Raha — Chief of Staff
-
-**Profile:** `hermes/profiles/cos/`
-**Channels:** `#boardroom`, `#biz-chat` (Arc Systems)
-
-**Mandate:** Coordinate C-suite agents, synthesise outputs, report to Chairman. No direct data access — all information comes through delegation. Owns the weekly Monday review cron.
-
-**Hermes toolsets:** `delegation`, `kanban`, `memory`, `skills`, `clarify`, `cronjob`
-
-> `kanban` must be listed explicitly — it is NOT included in Hermes `all` toolsets wildcard.
-
-**MCP servers:** None. `mcp_servers: {}`. Raha delegates; she never queries services directly.
-
-**Delegation targets:**
-
-| Child agent | When Raha delegates |
-|---|---|
-| Hala (`cfo`) | Business finance, P&L, invoices |
-| Omar (`coo`) | Client status, project delivery, CRM |
-| Reem (`cto`) | Codebase health, open PRs, tech issues |
-| Mira (`cmo`) | Content performance, upcoming posts |
-
-Delegation modes: **sync** (Raha blocks until child responds) or **async** (Raha fires and moves on). Child agents never respond to Discord directly — Raha owns the channel reply.
-
-**Weekly review cron:** Monday 09:00 VPS time. Delegates to all four C-suite in order, synthesises, posts in `#boardroom`.
-
----
-
-## Hala — CFO
-
-**Profile:** `hermes/profiles/cfo/`
-**Channel:** `#cfo-office` (Arc Systems)
-**Mandate:** Business financial records — transactions, invoices, P&L, budgets. Does not touch personal finance. Reports to Raha; user can also reach Hala directly in `#cfo-office`.
-
-**Hermes toolsets:** `memory`, `skills`, `clarify`
-
-**MCP servers:**
-
-| Server | Access |
-|---|---|
-| `finance-service` :8101 | Business tools only: `record_business_transaction`, `create_invoice`, `update_invoice_status`, `business_spending_report`, `business_account_balance`, `p_and_l_report`, `invoice_status_report` |
-
-**Key constraints:**
-- `svc_finance_business` role — zero access to `finance.*` personal tables
-- All writes go to `audit.log`
-
----
-
-## Omar — COO
-
-**Profile:** `hermes/profiles/coo/`
-**Channel:** `#coo-office` (Arc Systems)
-**Mandate:** Client relationships, project delivery, CRM. Read-only access to business finance for quoting context only — cannot create transactions or invoices.
-
-**Hermes toolsets:** `memory`, `skills`, `clarify`, `web`
-
-**MCP servers:**
-
-| Server | Access |
-|---|---|
-| `crm-service` :8104 | All tools (owns CRM) |
-| `finance-service` :8101 | `business_account_balance`, `invoice_status_report` only |
-
-**Key constraints:**
-- No direct DB access to `business.finance.*` — finance access is via tool include list only (tools connect as `svc_finance_business`)
-- No access to personal-service or knowledge-service
-
----
-
-## Reem — CTO
-
-**Profile:** `hermes/profiles/cto/`
-**Channel:** `#cto-office` (Arc Systems)
-**Mandate:** Codebase health, PR review, tech debt, architecture concerns. Read-only diagnostics on VPS. Cannot deploy, restart services, or install packages.
-
-**Hermes toolsets:** `terminal` (scoped), `file`, `memory`, `skills`, `clarify`, `web`
-
-**MCP servers:**
-
-| Server | Access |
-|---|---|
-| `knowledge-service` :8100 | `search_vault`, `get_note`, `list_notes` (read-only) |
-| GitHub (npx) | `list_issues`, `get_issue`, `list_pull_requests`, `get_pull_request`, `create_pull_request_review`, `list_commits`, `get_commit` |
-
-**command_allowlist** (terminal restricted to):
-```
-pytest, uv run pytest, mypy, ruff check, ruff format --check,
-git log, git diff, git status, journalctl -u, systemctl is-active
-```
-
-Anything outside this list requires manual Discord approval before execution.
-
-**GitHub PAT scopes:** Contents: Read, Pull requests: Read+Write, Issues: Read, Metadata: Read. Never admin scope.
-
----
-
-## Mira — CMO
-
-**Profile:** `hermes/profiles/cmo/`
-**Channel:** `#cmo-office` (Arc Systems)
-**Mandate:** Content strategy, LinkedIn presence, marketing campaigns. Reads vault for ideas, reads CRM for case studies. Does not write to either. Post performance tracking is Phase 7 (requires `analytics-service`).
-
-**Hermes toolsets:** `memory`, `skills`, `clarify`, `web`, `image_gen` (enable only if vision backend available on VPS)
-
-**MCP servers:**
-
-| Server | Access |
-|---|---|
-| `knowledge-service` :8100 | `search_vault`, `get_note`, `list_notes` (read-only) |
-| `crm-service` :8104 | `client_list`, `deal_pipeline`, `client_case_studies` (read-only) |
-| `analytics-service` :8105 | All tools — Phase 7 only, not in v1 |
-
-**Key constraints:**
-- Never publish client names or specific financials without explicit user approval
-- `client_case_studies` data must not go into content without approval — rule in AGENTS.md
-- `image_gen` toolset: enable only after confirming image generation backend works on VPS
 
 ---
 
@@ -220,7 +94,7 @@ security:
 
 approvals:
   mode: manual
-  cron_mode: deny           # except Raha and Nazim where cronjob is enabled
+  cron_mode: deny           # except Raha, Nazim, and Noor (vault walks) where cronjob is enabled
 
 auxiliary:
   compression:
