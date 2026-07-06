@@ -18,10 +18,10 @@ ln -sf "$NIZAM_OS/systemd/metrics-services.service"   /etc/systemd/system/metric
 ln -sf "$NIZAM_OS/systemd/metrics-services.timer"     /etc/systemd/system/metrics-services.timer
 # logrotate rejects config files not owned by root — symlinks to user-owned files are refused.
 # This is the only file in nizam-os that is COPIED not symlinked.
-# After editing config/logrotate.nizam, re-run this script to push the change.
-cp "$NIZAM_OS/config/logrotate.nizam" /etc/logrotate.d/nizam
-chown root:root /etc/logrotate.d/nizam
-chmod 644 /etc/logrotate.d/nizam
+# After editing config/logrotate.nizam-os, re-run this script to push the change.
+cp "$NIZAM_OS/config/logrotate.nizam-os" /etc/logrotate.d/nizam-os
+chown root:root /etc/logrotate.d/nizam-os
+chmod 644 /etc/logrotate.d/nizam-os
 
 systemctl daemon-reload
 echo "  reloaded system daemon"
