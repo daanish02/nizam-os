@@ -38,7 +38,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `DISCORD_ALLOWED_USERS` set on all profiles
 - `discord.allowed_channels` set on all profiles
 - LiteLLM Prisma migration run (spend tracking active)
-- `/etc/sudoers.d/nazim-hermes` created
+- `/etc/sudoers.d/nazim-nizam` created
 - Metrics timers wired up (LLM spend, service health, tool call counts)
 
 **Exit criteria:** Discord server exists with all channels and all bot tokens available. Hermes can connect to Discord. All Hermes profile configs pass the security checklist in [SECURITY](docs/SECURITY.md). Spend tracking recording in LiteLLM DB.
