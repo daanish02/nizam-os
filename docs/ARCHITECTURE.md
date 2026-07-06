@@ -107,15 +107,11 @@ Notes use an `areas` field (multi-value controlled vocabulary) instead of a stri
 
 ---
 
-## Observability
-
-Systemd timers write `.prom` metric files scraped by Prometheus via node-exporter's textfile collector. Grafana dashboards visualize system metrics. The Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only).
-
----
-
 ## Cross-cutting constraints
 
 - All internal services bind to `127.0.0.1` only. Nothing is publicly reachable except SSH.
+- **Observability:** systemd timers write `.prom` metric files scraped by Prometheus via node-exporter's textfile collector. Promtail tails all service and script logs and ships to Loki. Grafana dashboards visualize system metrics and logs across many dimensions — spend, health, throughput, latency, and more — so the system is always under observation and analytics inform operational decisions. The Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only).
+- **Staggered scheduling:** timers, cron jobs, and periodic processes are offset from each other. No two heavy processes start at the same wall-clock time. Prevents memory and CPU spikes from concurrent startup.
 - No agent connects directly to any external model API. All inference routes through LiteLLM.
 - `cron_mode: deny` on most profiles. Nazim and Raha have `cron_mode: manual`.
 - `redact_secrets: true` on all profiles. Hermes scrubs known secret patterns from tool output.

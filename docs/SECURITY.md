@@ -126,13 +126,12 @@ Applied to all profiles without exception. Any new profile must include all of t
 
 ## Delegation security
 
-Reem is the only agent with the `delegation` toolset.
+Delegation is opt-in per profile. Most agents have no delegation toolset — it is explicitly enabled only where the mandate requires spawning subagents.
 
-- `max_spawn_depth: 2` — Reem can spawn sandbox agents; sandbox agents can spawn further.
-- `subagent_auto_approve: false` — sandbox agent tool calls still require Discord approval.
-- `max_concurrent_children: 3`.
-- Sandbox agents never post to Discord directly. Reem synthesizes and posts in `#cto-office`.
-- Chief of staff coordinates via kanban, not delegation — has zero MCP access and zero delegation toolset. Cannot directly read or write any database.
+- `subagent_auto_approve: false` on all profiles with delegation — subagent tool calls still require Discord approval.
+- `max_spawn_depth` and `max_concurrent_children` are set per profile; values live in each profile's `config.yaml`. See [SERVICES](docs/SERVICES.md) for per-agent values.
+- Subagents never post to Discord directly. The parent agent synthesizes and posts.
+- Delegation depth and concurrency limits are enforced by Hermes — a subagent cannot exceed the depth budget set by its parent's profile.
 
 ---
 
