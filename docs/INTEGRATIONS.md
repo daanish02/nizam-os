@@ -1,168 +1,176 @@
-# Nizam-OS — Integrations
+# Integrations
 
-**Last updated:** 2026-07-01
-
-Every external service the system connects to: purpose, credentials, rate limits, failure behavior. For env var details see `docs/SECRETS.md`.
+Every external service or dependency the system connects to: what it is, why it's used, its auth surface, rate limits, and failure behavior.
 
 ---
 
 ## OpenRouter
 
-**What:** Model routing API. All LLM inference routes through OpenRouter → LiteLLM proxy → agents.
+**What:** Model routing API. All LLM inference routes through LiteLLM → OpenRouter.
 
-**URL:** `https://openrouter.ai/api/v1`
+**Why:** Single endpoint for 100+ model providers. Switching models means changing a config value — no code changes. Spend tracking at the proxy level.
 
-**Auth:** `OPENROUTER_API_KEY` in `secrets/nizam.env`
+**Auth:** `OPENROUTER_API_KEY` in `secrets/nizam.env`. Each agent uses a LiteLLM virtual key derived from this.
 
-**Headers sent with every request:**
-```
-HTTP-Referer: https://nizam-os
-X-Title: Nizam-OS
-```
+**Models in use:**
 
-**Models used:**
 | Model | Used for |
-|---|---|
+|-------|---------|
 | `deepseek/deepseek-v4-flash` | All agent inference (primary) |
-| `deepseek/deepseek-v3-0324` | Compression (context summarisation) |
-| `google/gemini-embedding-2` | Vault note embeddings (knowledge-service) |
-| `google/gemini-2.0-flash` | Vision model for `ingest_image` (default, overridable via `VISION_MODEL`) |
+| `deepseek/deepseek-v4-flash` | Context compression |
+| `google/gemini-embedding-2` | Vault note embeddings |
+| `google/gemini-2.0-flash` | Vision (image ingestion) |
 
-**Rate limits:** Depends on OpenRouter credit balance. No hard request limit — pay-as-you-go. Monitor spend in Grafana (`agents-dashboard.json`).
+**Rate limits:** Pay-as-you-go. No hard request limit — constrained only by credit balance. Monitored via Grafana spend dashboard.
 
-**Failure behavior:** LiteLLM returns HTTP 5xx to the agent. Hermes retries (`api_max_retries: 3`). If OpenRouter is fully down: all agent inference fails; no local fallback.
-
----
-
-## LiteLLM Proxy (internal)
-
-**What:** Local model proxy on `localhost:4000`. Not an external service but is the intermediary to OpenRouter. Adds: spend tracking, Redis cache, per-profile virtual keys, token counting.
-
-**Config:** `config/litellm.yaml`
-
-**Admin UI:** `http://localhost:4000` (or via Tailscale) — view spend logs, virtual keys, cache stats.
-
-**Spend tracking:** Requires Prisma migration run on first boot. Without it: proxy works but spend logs are not persisted. See `docs/RUNBOOK.md` → LiteLLM DB init.
-
-**Cache:** Exact-match Redis cache (TTL 3600s). Identical prompt + model = cache hit, no OpenRouter call. Semantic cache: not yet configured.
+**Failure mode:** LiteLLM returns HTTP 5xx to the agent. Hermes retries (`api_max_retries: 3`). If OpenRouter is fully down, all agent inference fails. No local fallback.
 
 ---
 
 ## Discord
 
-**What:** Primary user interface. Each agent is a Discord bot in the same server.
+**What:** Primary user interface. Each agent is a separate Discord bot in the same server.
 
-**Auth per profile:** `DISCORD_TOKEN` in `hermes/profiles/<name>/.env`. Server ID: `DISCORD_GUILD_ID` (same across all profiles).
+**Why:** Always-on, mobile-accessible, notification-native. Separates domains into channels naturally.
 
-For server structure, bot creation, intents, webhooks, channel IDs, and `DISCORD_ALLOWED_USERS` setup see `docs/DISCORD.md`.
+**Auth:** One `DISCORD_TOKEN` per agent profile in `hermes/profiles/<name>/.env`. Shared `DISCORD_GUILD_ID` across all profiles.
+
+**Failure mode:** If Discord is down, no interaction with agents is possible. Agents continue running but cannot receive or send messages.
+
+Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 ---
 
 ## YouTube Data API v3
 
-**What:** Tier 3 fallback for transcript fetching in `knowledge-service`. Used only when `youtube-transcript-api` (Tier 1) and `yt-dlp` (Tier 2) both fail.
+**What:** Tier 3 fallback for transcript fetching in `knowledge-service`.
 
-**Auth:** `YOUTUBE_API_KEY` in `nizam.env`
+**Why:** Used only when `youtube-transcript-api` (Tier 1) and `yt-dlp` (Tier 2) both fail.
 
-**Quota:** 10,000 units/day (free tier). Transcript caption download = ~50 units. At typical usage (a few videos/day) this is never a constraint.
+**Auth:** `YOUTUBE_API_KEY` in `nizam.env`.
 
-**Where used:** `services/knowledge-service/transcript.py` — `_tier3_youtube_api()` function.
+**Rate limits:** 10,000 units/day (free tier). Transcript caption download ≈ 50 units. Not a realistic constraint at personal usage volumes.
 
-**Failure behavior:** If API key is missing or quota is exhausted: returns `{"source": "youtube-api-v3-metadata"}` with video description as content. Confidence downgraded to `"low"`. Noor is notified via tool response.
-
-**Get key:** console.cloud.google.com → APIs & Services → Credentials → Create Credentials → API Key → restrict to YouTube Data API v3.
+**Failure mode:** If unavailable or quota exhausted, falls back to video description metadata with confidence downgraded to `"low"`. Noor is notified via tool response.
 
 ---
 
-## yt-dlp (Tier 2 transcript)
+## yt-dlp
 
-**What:** Local CLI tool. Second fallback for YouTube transcripts. Downloads VTT subtitle files, parses, deduplicates.
+**What:** Local CLI tool. Second fallback (Tier 2) for YouTube transcript download via VTT subtitles.
 
-**Auth:** Optional. `YOUTUBE_COOKIES_FILE` path in `nizam.env` — points to a `cookies.txt` exported from a logged-in browser session. Needed if yt-dlp gets blocked by YouTube.
+**Why:** Handles transcripts when `youtube-transcript-api` is blocked by YouTube.
 
-**Installation:** `pip install yt-dlp` or `uv add yt-dlp` in knowledge-service deps. Should already be in `pyproject.toml`.
+**Auth:** Optional `YOUTUBE_COOKIES_FILE` in `nizam.env` — path to a `cookies.txt` from a logged-in browser session. Required if yt-dlp hits sign-in errors or 429s.
 
-**Failure behavior:** If VTT download fails: falls through to Tier 3 (YouTube Data API). No crash. If returning 429 or sign-in errors: see `docs/RUNBOOK.md` → yt-dlp cookie refresh.
+**Failure mode:** Falls through to Tier 3 (YouTube Data API). No crash.
 
 ---
 
 ## FX Rate API
 
-**What:** Exchange rate lookups for multicurrency finance transactions. Used by `finance-service`.
+**What:** Exchange rate lookups for multicurrency finance transactions.
 
-**Provider:** `api.exchangerate-api.com` (free tier)
+**Provider:** `api.exchangerate-api.com` (free tier).
 
-**Auth:** `FX_API_KEY` in `nizam.env`
+**Auth:** `FX_API_KEY` in `nizam.env`.
 
-**Free tier:** 1,500 requests/month. At one lookup per transaction (same-day rate cached in `finance.fx_rates`), this is sufficient for daily personal use.
+**Rate limits:** 1,500 requests/month (free tier). Sufficient for daily personal finance at one lookup per report run.
 
-**Caching:** `docs/SERVICES.md` → finance-service → Tunables.
+**Caching:** finance-service caches the rate for a configurable TTL to avoid burning quota. Detail: `docs/specs/`.
 
-**Failure behavior:** If API is unavailable: `finance-service` asks Ayah to surface the error. Ayah asks user to supply the rate manually. Transaction is not blocked.
-
-**Currencies supported:** USD, AED, SAR, and most ISO 4217 codes. Verify SAR support before first transaction.
-
-**Get key:** exchangerate-api.com → sign up → free tier → copy API key.
+**Failure mode:** If unavailable, `finance-service` surfaces the error. Ayah asks the owner to supply the rate manually. Transaction logging is not blocked.
 
 ---
 
 ## Gold Price API
 
-**What:** Current gold price in USD/gram for zakat nisab calculation. Used by `finance-service` → `calculate_zakat` tool.
+**What:** Current gold price in USD/gram for zakat nisab calculation.
 
-**Provider:** `metals-api.com` or `goldpricez.com` (free tier — confirm at build time)
+**Provider:** TBD at build time (metals-api.com or equivalent free tier).
 
-**Auth:** `GOLD_API_KEY` in `nizam.env`
+**Auth:** `GOLD_API_KEY` in `nizam.env`.
 
-**Usage frequency:** Fetched only at hawl calculation time (once per year). Not polled continuously.
+**Usage:** Fetched only at zakat calculation time — not polled continuously.
 
-**Caching:** Stored in `finance.zakat_hawl.gold_price_usd` after each calculation. Not re-fetched unless a new hawl is being calculated.
-
-**Failure behavior:** If API is unavailable at hawl calculation time: `calculate_zakat` returns an error. Ayah asks user to supply the gold price manually. Not a blocking failure for day-to-day finance operations.
+**Failure mode:** If unavailable, `calculate_zakat` returns an error. Ayah asks the owner to supply the gold price manually.
 
 ---
 
-## GitHub (Reem / CTO)
+## GitHub (Reem only)
 
-**What:** Read access to nizam-os GitHub repo. Reem uses the official GitHub MCP server (`@modelcontextprotocol/server-github`) to review PRs, list issues, read commits.
+**What:** Read access to the nizam-os repo. Reem uses the official GitHub MCP server to review PRs, list issues, and read commits. Limited write access for PR operations.
 
-**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile, not in shared nizam.env)
+**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile — not in shared `nizam.env`).
 
-**Required scopes:** `docs/SECURITY.md` → GitHub access (Reem).
+**Required PAT scopes:** Contents read, Pull requests read+write, Issues read, Metadata read. No admin scope. No delete, no repo creation, no webhook management.
 
-**Runtime:** `npx -y @modelcontextprotocol/server-github` — pulled from npm at Hermes session start. Requires Node.js on VPS (`node --version`; install via nvm or apt if missing).
+**Runtime:** `npx -y @modelcontextprotocol/server-github` pulled from npm at Hermes session start. Requires Node.js on VPS. This is a supply chain trust surface — pin the version when Reem is built. Detail: [SECURITY](docs/SECURITY.md) → Supply chain.
 
-**Get token:** github.com → Settings → Developer settings → Fine-grained personal access tokens → Generate new token → select repo → set scopes above.
+**Failure mode:** If npm is unavailable at session start, Reem's GitHub MCP fails to load. Reem continues to function without GitHub tools.
 
 ---
 
 ## Tailscale
 
-**What:** VPN for VPS management access. Not used by agents — used by the human operator to SSH into and administer the VPS without exposing ports.
+**What:** VPN for VPS management. Used by the owner to SSH in and administer the VPS. Not used by agents.
 
-**Auth:** Tailscale account tied to VPS. Auth key generated at login.tailscale.com.
+**Why:** Avoids exposing SSH on the public internet as the primary access path.
 
-**UFW rule:** Tailscale subnet (`100.64.0.0/10`) is allowed inbound. SSH is only accessible via Tailscale IP in normal operations.
+**Auth:** Tailscale account linked to VPS. Auth key from login.tailscale.com.
 
-**Failure behavior:** If Tailscale is down: VPS is still reachable via public IP on port 22 (if UFW allows it) or via Hostinger VPS console.
-
-**On fresh VPS:** Install and auth before closing the initial SSH session.
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-# Follow the auth URL that appears
-sudo tailscale status   # verify connected
-```
+**Failure mode:** If Tailscale is down, VPS is still reachable via public IP on port 22 (UFW allows it) or via Hostinger VPS console.
 
 ---
 
-## Prometheus + Grafana (internal observability)
+## LiteLLM Proxy (internal)
 
-Not external services but have their own integration surface.
+**What:** Local model proxy on `localhost:4000`. The single chokepoint between agents and any external model provider.
 
-**Prometheus:** `localhost:9090`. Scrapes node-exporter (system metrics) + textfile collector (custom `.prom` files in `/var/lib/prometheus/node-exporter/`).
+**Why:** Centralizes spend tracking, Redis caching (exact-match and future semantic), per-agent virtual keys, token counting, and rate limits. Switching model providers requires only a config change — no agent or service code changes.
 
-**Grafana:** `localhost:3000` (or via Tailscale). Datasource UID and dashboard import: `docs/SERVICES.md` → Infrastructure tunables → Prometheus. Dashboard import procedure: `docs/RUNBOOK.md` → Grafana dashboard.
+**Auth:** Each Hermes agent profile carries a LiteLLM virtual key (derived from the master `OPENROUTER_API_KEY`). Agents connect to `http://localhost:4000` — they never see the OpenRouter key directly.
 
-**Grafana PostgreSQL datasource** (added in Assistant v1): connect as `grafana` role, SELECT-only. Credentials set in Grafana UI, not in nizam.env.
+**Spend tracking:** Requires Prisma migration run on first boot. Without it, the proxy routes correctly but spend is not persisted.
+
+**Cache:** Exact-match Redis cache (TTL configurable). Identical prompt + model = cache hit, no OpenRouter call. Semantic cache is planned.
+
+**Failure mode:** If LiteLLM is down, all agent inference fails. Restart via systemd: `systemctl --user restart litellm`.
+
+---
+
+## Langfuse (internal, on-demand)
+
+**What:** Self-hosted LLM observability platform. Traces agent LLM calls — prompt, response, token counts, latency, model, cost — for debugging and evaluation.
+
+**Why:** When an agent behaves unexpectedly, Langfuse lets you inspect the exact prompt and response at each step. Not needed in normal operation — enabled only during active debugging or tracing sessions.
+
+**How it's toggled:** Langfuse integration is controlled via an environment variable in `nizam.env`. When `LANGFUSE_ENABLED=true`, LiteLLM sends traces to the Langfuse instance. When absent or `false`, no tracing overhead. Hermes also supports Langfuse natively as a plugin — can be configured per-profile for targeted agent tracing.
+
+**Auth:** `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST` in `nizam.env`. Host points to the self-hosted instance (localhost or Tailscale IP).
+
+**Bind:** `127.0.0.1` only. Accessible via Tailscale for browser UI.
+
+**Failure mode:** If Langfuse is down and tracing is enabled, LiteLLM drops the trace silently — agent inference continues unaffected. Tracing is best-effort.
+
+---
+
+## Prometheus + node-exporter (internal)
+
+**What:** Metrics collection for observability. Not external but has an integration surface.
+
+**Why:** Three systemd timers write `.prom` textfiles for LLM spend, service health, and tool call counts. node-exporter picks these up and exposes them to Prometheus.
+
+**Auth:** None — localhost only.
+
+**Failure mode:** If Prometheus is down, metrics stop updating. Agents continue operating normally.
+
+---
+
+## Grafana (internal)
+
+**What:** Dashboards over Prometheus metrics and PostgreSQL audit data.
+
+**Auth:** Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only). Credentials set in Grafana UI, not in `nizam.env`.
+
+**Failure mode:** If Grafana is down, dashboards are unavailable. No operational impact on agents or services.

@@ -1,28 +1,44 @@
 # Vision
 
-Nizam-OS, or simply **Nizam**, is a personal AI operating system running on a private VPS. It is a team of autonomous agents — each with a defined role and mandate, communicating through Discord channels (multiple agents can share a channel when it makes sense) — that run 24/7 to handle the operational layer of my life and business.
+Nizam-OS, better known as **Nizam** is a personal AI operating system running on a private VPS. It is a team of autonomous agents — each with a defined role and mandate — that run continuously to handle the operational layer of one person's life and business.
 
-The goal is not to automate tasks. The goal is to offload the cognitive overhead of tracking, logging, monitoring, and organizing so that my attention stays on decisions and creative work. The agents don't replace judgment — they handle everything that doesn't require it.
+The goal is not to automate tasks. The goal is to offload the cognitive overhead of tracking, logging, monitoring, and organizing so that attention stays on decisions and creative work. Agents don't replace judgment — they handle everything that doesn't require it.
 
-## What "done" looks like
+---
 
-**Personal life:**
+## Who it is for
 
-- **Knowledge is captured automatically.** I drop a PDF, a URL, or an image into Discord. Noor extracts it, classifies it, and files it into the vault with my approval. My vault grows without friction.
-- **My health is monitored without me.** Nazim watches all services, restarts what can be restarted, and posts clear incident reports. I wake up to a system that fixed itself overnight.
-- **My day starts with a briefing.** Every morning Ayah posts in `#briefing`: total balance across all accounts, total spent this month to date, the five tasks coming up, a quote. Every evening she posts a recap of the day's spend, current balance, and five upcoming tasks, then opens a thread for journaling.
-- **My habits, goals, and projects are always current.** I tell Ayah what I completed. She logs it, tracks streaks, and surfaces what's due — without me opening an app or remembering to update anything.
-- **My money is always accounted for.** Every expense and income I log through Ayah. Monthly reconciliation happens in one conversation. Zakat is calculated when it's due.
-- **My personal growth is tracked, not just my work.** Goals — including deen-related goals — reading, and reflection live in the vault and the journal alongside everything else.
+One person: the owner.  
+Not a product. Not multi-tenant. Not for distribution.
 
-**Business vision (Phases 6a–6e):** `docs/future/VISION.md`.
+---
+
+## What success looks like
+
+**Personal domain:**
+
+- Knowledge is captured without friction. Drop a PDF, URL, or image into Discord. The agent extracts, classifies, and files it — with owner approval — into the vault. The vault grows without manual effort.
+- The system maintains itself overnight. The system admin agent watches all services, restarts what can be restarted, and posts clear incident reports. The owner wakes up to a system that fixed itself.
+- Every morning begins with a briefing: total balance across accounts, month-to-date spend, upcoming tasks, a quote. Every evening: a recap of spend, current balance, upcoming tasks, and an open thread for journaling.
+- Habits, goals, projects, and tasks are always current without opening an app. The owner speaks; the agent logs and tracks.
+- Every expense and income is accounted for. Monthly reconciliation happens in one conversation. Zakat is calculated when due.
+- Personal growth — goals, learning, reflection — lives in the vault alongside everything else.
+
+**Business domain:**
+
+The system supports business operations at the same level of friction reduction as personal: CRM tracking, financial oversight, developer tooling, content creation, marketing, research, and strategic review. Business agents operate on the same infrastructure as personal agents. 
+
+> Detail: [Roadmap](docs/ROADMAP.md) → Phases 6a–6e.
 
 **Infrastructure:**
 
-- **Nothing requires me to log into a server.** I interact through Discord. The VPS and its services are invisible. Nazim handles everything underneath.
+Nothing requires logging into a server. All interaction happens through Discord. The VPS and its services are invisible to the owner.
+
+---
 
 ## What this is not
 
-- Not a chatbot. The agents have mandates, memory, and tools — they act, not just respond.
-- Not a SaaS product. This is personal infrastructure, built for one person's life and business.
-- Not a replacement for professional judgment. Agents flag, report, and execute within defined rules. Final authority stays with me.
+- Not a chatbot. Agents have mandates, memory, and tools — they act, not just respond.
+- Not a SaaS product. Personal infrastructure built for one person.
+- Not a replacement for judgment. Agents flag, report, and execute within defined rules. Final authority stays with the owner.
+- Not a general-purpose assistant. Each agent owns a domain; tasks outside that domain are refused or routed to the correct agent.

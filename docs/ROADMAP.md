@@ -1,136 +1,178 @@
-# Nizam-OS — master roadmap
+# Roadmap
 
-**Last updated:** 2026-07-01
+Build order and exit criteria by phase. No dates — phases are sequenced by dependency, not calendar.
 
-One-page status of everything. States: **In repo** (code + plan written, not yet deployed), **Specced** (design approved, not built), **Planned** (known need, not yet specced), **Pending** (awaiting prior phase).
-
----
-
-## Infrastructure
-
-Full infrastructure spec and rebuild plan: `docs/specs/20260701-foundation-design.md` + `docs/plans/20260701-foundation.md`
-
-| Component | Status | Notes |
-|---|---|---|
-| VPS baseline (UFW, fail2ban, unattended-upgrades, Tailscale, SSH hardening) | **In repo** | All config documented in foundation spec |
-| PostgreSQL + pgvector + ParadeDB | **In repo** | knowledge schema not yet run (Task 9 of foundation plan) |
-| Redis | **In repo** | Exact-match cache for LiteLLM; price cache for metrics-llm.py |
-| LiteLLM proxy | **In repo** | DB tables need Prisma migration on first boot with DATABASE_URL set |
-| Prometheus + node-exporter | **In repo** | Textfile dir `/var/lib/prometheus/node-exporter/` needs creation |
-| Grafana + dashboards | **In repo** | Dashboards must be imported manually after install |
-| Hermes profile watcher | **In repo** | User service — enable after install-symlinks.sh |
-| Env watcher | **In repo** | System service — enabled by install-symlinks.sh |
-| Metrics timers (LLM, services, tool calls) | **In repo** | System timers — enabled by install-symlinks.sh |
-| Inventory watcher | **In repo** | Timer — enabled by install-symlinks.sh |
-| Secrets (sops/age) | **In repo** | nizam.env.enc committed; age private key must be backed up before wipe |
-| System health monitor | **Specced** | `docs/specs/20260701-admin-v1-design.md` |
-| `~/nizam-vault/` | **Pending** | Created in Task 9 of foundation plan |
+**Principle:** Personal agents before business agents. Within personal, Nazim is critical infrastructure — he maintains all other services. Nail Nazim before Noor and Ayah; failures in Noor and Ayah are recoverable, failures in Nazim take down everyone. Business agents build on lessons from all three personal agents.
 
 ---
 
-## Agents
+## Phase 1 — Foundation
 
-| Agent | Profile | Status | Notes |
-|---|---|---|---|
-| Nazim | `admin` | **In repo** — profile needs rename Bani→Nazim (Phase 2) | Health check manual; cron not wired |
-| Noor | `curator` | **In repo** — tools non-functional until knowledge schema runs (Phase 1 Task 9) | PDF + image ingestion not built yet |
-| Ayah | `assistant` | **In repo** — stub profile, gateway not enabled | SOUL.md is default placeholder |
-| Raha | `cos` | **In repo** — stub profile, gateway not enabled | SOUL.md is default placeholder |
-| Hala | `cfo` | Not built | — |
-| Omar | `coo` | Not built | — |
-| Reem | `cto` | Not built | — |
-| Mira | `cmo` | Not built | — |
+**What:** Bare VPS → working infrastructure. No agents yet. The base layer everything else runs on.
 
----
+**Includes:**
+- Ubuntu 24.04 LTS, UFW, fail2ban, SSH hardening, Tailscale
+- PostgreSQL + pgvector + ParadeDB
+- Redis
+- LiteLLM proxy with OpenRouter
+- Prometheus + node-exporter
+- Loki + Promtail (log aggregation)
+- Grafana (Personal dashboard + Business dashboard skeleton)
+- age encryption setup; `secrets/nizam.env` populated
+- `audit` schema migration run
 
-## Specs
-
-Personal specs: `docs/ARCHITECTURE.md` → Drill-down index → Specs.
-Business specs: `docs/future/ARCHITECTURE.md` → Drill-down index.
+**Exit criteria:** LiteLLM proxy reachable at `localhost:4000`. PostgreSQL running with `nizam` database and `audit.log` table. Grafana loading at `localhost:3000`. 
 
 ---
 
-## Services
+## Phase 2 — Hermes baseline
 
-Port map and tool specs: `docs/SERVICES.md`. Status per service is in the Build order table below.
+**What:** Hermes configured correctly across all profiles before any agent goes live.
 
----
+**Includes:**
+- Hermes installed
+- Discord server created: categories, channels, one bot application per agent, tokens in place
+- `DISCORD_GUILD_ID` and all `DISCORD_TOKEN` vars populated in `nizam.env`
+- `allow_lazy_installs: false` on all profiles
+- Models pinned on all profiles
+- `DISCORD_ALLOWED_USERS` set on all profiles
+- `discord.allowed_channels` set on all profiles
+- LiteLLM Prisma migration run (spend tracking active)
+- `/etc/sudoers.d/nazim-hermes` created
+- Metrics timers wired up (LLM spend, service health, tool call counts)
 
-## Database migrations
-
-Migration index, schema status, and DB roles: `docs/SCHEMAS.md` → Migration index.
-
----
-
-## Knowledge ingestion (Noor)
-
-| Source type | Status |
-|---|---|
-| YouTube transcript | **In repo** |
-| URL / web page | **In repo** |
-| PDF (URL or Discord attachment) | **Specced** |
-| Image (URL or Discord attachment) | **Specced** |
-| Audio / podcast | Planned |
-| PPT / slides | Planned |
-| RSS feeds / newsletters | Planned |
+**Exit criteria:** Discord server exists with all channels and all bot tokens available. Hermes can connect to Discord. All Hermes profile configs pass the security checklist in [SECURITY](docs/SECURITY.md). Spend tracking recording in LiteLLM DB.
 
 ---
 
-## Immediate fixes needed (before any new implementation)
+## Phase 3 — Nazim (system admin)
 
-Correctness issues in existing config and profile files — not new features. Must be resolved before Phase 3 (Curator v1).
+**What:** System monitoring and self-healing live.
 
-Implementation steps: `docs/plans/20260701-immediate-fixes.md`
+**Includes:**
+- Nazim's Hermes profile active in Discord
+- Nazim can restart all defined services via `command_allowlist`
+- Incident reporting to Discord verified
+- Metrics dashboards showing service health
 
-| Fix | Profile / location | Status |
-|---|---|---|
-| Rename Bani → Nazim | `admin` profile | Pending |
-| Fix admin SOUL.md + write AGENTS.md | `admin` profile | Pending |
-| Write Ayah SOUL.md + AGENTS.md | `assistant` profile | Pending |
-| Write Raha SOUL.md + AGENTS.md | `cos` profile | Pending |
-| Fix curator SOUL.md + write AGENTS.md | `curator` profile | Pending |
-| Write `user.md` per profile | all profiles | Pending |
-| Pre-seed memory per profile | all profiles (VPS) | Pending |
-| Set `DISCORD_ALLOWED_USERS` | all profiles `.env` | Pending |
-| Set `discord.allowed_channels` | all profiles `config.yaml` | Pending |
-| `allow_lazy_installs: false` | all profiles `config.yaml` | Pending |
-| Pin compression model | all profiles `config.yaml` | Pending |
-| Disable default skills | all profiles `config.yaml` | Pending |
-| Delete TOOLS.md | `admin`, `curator` | Pending |
-| Add Nazim sudoers entry | VPS `/etc/sudoers.d/` | Pending |
-| Create `~/nizam-vault/` | VPS | Pending |
-| Initialise LiteLLM DB tables | VPS | Pending |
-| Redesign knowledge schema | `db/migrations/0001_knowledge_schema.sql` | Pending |
-| Set up observability (post-wipe) | VPS — Prometheus, Grafana, metric timers | Pending |
+**Exit criteria:** Nazim detects a service failure, restarts it, and posts an incident report in Discord without owner intervention.
 
 ---
 
-## Build order
+## Phase 4 — Noor (knowledge curator)
 
-Personal agents first — they tolerate mistakes. Business agents follow only after personal side is stable. See `docs/ARCHITECTURE.md` for the design rationale.
+**What:** Knowledge ingestion and vault search live.
 
-| Phase | What | Spec | Plan | Status |
-|---|---|---|---|---|
-| 1 | Foundation — VPS, infra, knowledge-service, admin + curator profiles | `20260701-foundation-design.md` | `20260701-foundation.md` | **In repo** |
-| 2 | Immediate fixes — profile cleanup, AGENTS.md, security settings | — | `20260701-immediate-fixes.md` | Pending |
-| 3 | Curator v1 — Noor: PDF + image, HTTP MCP, unified ingest | `20260701-curator-v1-design.md` | `20260701-curator-v1.md` | Pending |
-| 4 | Admin v1 — Nazim: health monitor + cron | `20260701-admin-v1-design.md` | `20260701-admin-v1.md` | Pending |
-| 5 | Assistant v1 — Ayah: personal + finance services | `20260701-assistant-v1-design.md` | `20260701-assistant-v1.md` | Pending |
-| 6a | CoS v1 — Raha: delegation, weekly review | `docs/future/specs/20260701-cos-v1-design.md` | TBD | Pending |
-| 6b | CFO v1 — Hala: business finance | `docs/future/specs/20260701-cfo-v1-design.md` | TBD | Pending |
-| 6c | COO v1 — Omar: CRM, operations | `docs/future/specs/20260701-coo-v1-design.md` | TBD | Pending |
-| 6d | CTO v1 — Reem: GitHub MCP | `docs/future/specs/20260701-cto-v1-design.md` | TBD | Pending |
-| 6e | CMO v1 — Mira: content, CRM read | `docs/future/specs/20260701-cmo-v1-design.md` | TBD | Pending |
+**Includes:**
+- `knowledge` schema migration
+- `knowledge-service` running as systemd unit
+- Vault directory created (`~/nizam-vault/commons/`)
+- Noor's Hermes profile active in Discord
+- Ingestion from URL, YouTube, PDF, image working
+- Approval workflow verified end-to-end
+
+**Exit criteria:** Noor can ingest a URL, present a draft in Discord, and write to vault after owner approval. Search returns results.
 
 ---
 
-## What is NOT being built (by design)
+## Phase 5 — Ayah (personal assistant)
 
-| Item | Reason |
-|---|---|
-| True tamper-proof audit log | PostgreSQL append-only is good enough for internal use; court-grade needs WORM storage |
-| Real-time gold price tracking | API rate limits; zakat calc at hawl time is sufficient |
-| Obsidian local sync | Not needed until vault is mature; Syncthing setup is a separate future spec |
-| WhatsApp for client comms | Configured when Omar (COO) is built |
-| Voice journaling | Phase 2 — Ayah must be functional first |
-| Firejail sandboxing for Reem | Planned — spec when Reem is being built |
+**What:** Personal finance, habits, goals, tasks, journaling, and daily briefings live.
+
+**Includes:**
+- `personal` schema migration
+- `finance_personal` schema migration
+- `personal-service` running as systemd unit
+- `finance-service` running as systemd unit
+- Ayah's Hermes profile active in Discord
+- Morning briefing and evening recap cron verified
+- Finance logging, reconciliation, and zakat calculation verified
+- Habit logging and goal tracking verified
+- Journal entry workflow verified
+
+**Exit criteria:** Ayah delivers a morning briefing. Owner can log a transaction, a habit completion, and a journal entry via Discord. Zakat calculation runs on demand.
+
+---
+
+## Phase 6a — Raha (chief of staff)
+
+**What:** Business coordination layer. Raha orchestrates C-suite agents via kanban — no direct data access.
+
+**Includes:**
+- Raha's Hermes profile active in Discord
+- Kanban toolset configured
+- C-suite delegation workflow verified
+
+**Exit criteria:** Raha creates a kanban task that a C-suite agent picks up and executes.
+
+**Prerequisite:** All personal phases stable.
+
+**Status:** TBP
+
+---
+
+## Phase 6b — Hala (CFO)
+
+**What:** Business finance tracking and reporting.
+
+**Includes:**
+- `finance_business` schema migration
+- `finance-service` extended with business finance tools and `svc_finance_business` role
+- Hala's Hermes profile active
+
+**Exit criteria:** Hala can log a business expense and generate a financial report.
+
+**Prerequisite:** Raha working
+
+**Status:** TBP
+
+---
+
+## Phase 6c — Omar (CRO)
+
+**What:** CRM and pipeline management.
+
+**Includes:**
+- `crm` schema migration
+- `crm-service` running on port 8104
+- Omar's Hermes profile active
+
+**Exit criteria:** Omar can create a contact, log an interaction, and update a pipeline stage.
+
+**Prerequisite:** Raha working
+
+**Status:** TBP
+
+---
+
+## Phase 6d — Reem (CTO)
+
+**What:** Developer tooling, GitHub review, and delegated research.
+
+**Includes:**
+- Reem's Hermes profile active
+- GitHub MCP configured and pinned to a specific version
+- Sandbox delegation workflow verified
+
+**Exit criteria:** Reem reviews a PR, delegates a research task to a sandbox agent, and synthesizes the output in `#cto-office`.
+
+**Prerequisite:** Raha working
+
+**Status:** TBP
+
+---
+
+## Phase 6e — Mira (CMO)
+
+**What:** Marketing analytics and content performance.
+
+**Includes:**
+- `analytics` schema migration
+- `analytics-service` running on port 8105
+- Mira's Hermes profile active
+
+**Exit criteria:** Mira can report on campaign performance and surface content metrics.
+
+**Prerequisite:** Raha working
+
+**Status:** TBP

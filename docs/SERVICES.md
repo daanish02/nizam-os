@@ -1,251 +1,172 @@
-# Nizam-OS — Services
+# Services
 
-**Last updated:** 2026-07-01
+All MCP services run on `127.0.0.1` only. Agents connect via `url: http://127.0.0.1:PORT/mcp`. One service can serve multiple agents; each agent sees only the tool subset specified in its `config.yaml` `tools.include` list.
 
-Personal MCP services (Phases 3–5). For business services (Phases 6b+): `docs/future/SERVICES.md`.
+Services are independent of agents. Adding capability means building a new service, not modifying an existing agent.
 
 ---
 
 ## Port map
 
-| Port | Service | Status |
-|---|---|---|
-| 4000 | LiteLLM proxy (not an MCP service — model routing) | In repo |
-| 8100 | `knowledge-service` | In repo (stdio now; HTTP port 8100 in Curator v1) |
-| 8101 | `finance-service` | Specced |
-| 8102 | `personal-service` | Specced |
-
-Business service ports (8103–8105): `docs/future/SERVICES.md`.
-
-All services run on `127.0.0.1` only. Hermes connects via `url: http://127.0.0.1:PORT/mcp`.
+| Port | Service | Domain |
+|------|---------|--------|
+| 3000 | Grafana | Observability |
+| 3001 | Langfuse (self-hosted, on-demand) | Observability |
+| 3100 | Loki (log aggregation) | Observability |
+| 4000 | LiteLLM proxy (not MCP — model routing) | Shared |
+| 8100 | `knowledge-service` | Personal |
+| 8101 | `finance-service` | Personal + Business |
+| 8102 | `personal-service` | Personal |
+| 8103 | `math-service` | Shared utility |
+| 8104 | `crm-service` | Business |
+| 8105 | `analytics-service` | Business |
 
 ---
 
 ## knowledge-service
 
-**Port:** 8100
-**Transport:** stdio subprocess now → streamable-HTTP port 8100 in Curator v1
-**Status:** In repo — non-functional (DB schema not run; vault dir does not exist)
-**Spec:** `docs/specs/20260701-curator-v1-design.md`
-**DB role:** `svc_knowledge` (RW on `knowledge.*`, INSERT on `audit.log`)
-**Systemd unit:** `systemd/knowledge-service.service` (added in Curator v1)
+**Port:** 8100  
+**DB role:** `svc_knowledge`  
+**Consumers:** Noor (all tools), Reem (read-only subset)
 
-### Consumers and tool access
+**Responsibility:** Manages the knowledge vault (`~/nizam-vault/`). Handles ingestion from URLs, YouTube, PDFs, and images. Enforces the approval workflow before any vault write. Maintains the vault index and embeddings in PostgreSQL. Exposes search over the vault (keyword, semantic, hybrid).
 
-| Agent | Tools included |
-|---|---|
-| Noor (`curator`) | All tools |
-| Reem (`cto`) | `search_vault`, `get_note`, `list_notes` |
-| Mira (`cmo`) | `search_vault`, `get_note`, `list_notes` |
+**Contract:** No vault write without owner approval. Agent suggests classification (areas, tags, title) — owner never supplies these manually. Every ingest is a two-pass operation: draft → approval → write.
 
-### Tools — current (stdio, 7 tools)
+**Key capability boundaries:**
+- Noor can read and write.
+- Reem can search and read notes only — no writes.
+- No other agent has access.
 
-| Tool | Key params | What it does |
-|---|---|---|
-| `search_vault` | `query`, `domain?`, `limit=10` | Hybrid BM25 + pgvector search across vault commons |
-| `get_note` | `file_path` | Read full note by absolute path |
-| `list_notes` | `domain?`, `tags?`, `status?`, `limit=50` | List indexed notes with optional filters |
-| `add_note` | `title`, `domain`, `subdomain`, `source`, `content`, `tags`, `approved=False` | Create note — approval-gated (False=draft, True=write) |
-| `update_note` | `file_path`, `approved=False`, `content?`, `title?`, `tags?`, `status?` | Update note — approval-gated |
-| `ingest_url` | `url`, `approved=False`, `domain?`, `subdomain?`, `tags?` | Fetch URL → vault note. 3-pass: preview → draft → write |
-| `ingest_youtube` | `url`, `approved=False`, `domain?`, `subdomain?`, `tags?` | YouTube transcript → vault note. 3-pass workflow |
-
-### Tools — Curator v1 changes
-
-`ingest_url` and `ingest_youtube` are replaced by one unified tool:
-
-| Tool | Key params | What it does |
-|---|---|---|
-| `ingest` | `source`, `approved=False`, `domain?`, `subdomain?`, `tags?`, `media_type?` | Auto-detect: YouTube / PDF / image / web. 3-pass workflow |
-| `ingest_pdf` | (merged into `ingest`) | PDF via URL or Discord CDN attachment. pymupdf extraction. |
-| `ingest_image` | (merged into `ingest`) | Image via URL or Discord CDN. LiteLLM vision model describes + extracts text. |
-
-Auto-detection order: YouTube URL → Content-Type PDF / `.pdf` extension → Content-Type image/* → web scrape. `media_type` param overrides for ambiguous sources.
-
-### Approval workflow (all write tools)
-
-```
-Pass 1 — agent ingests content: extracts/transcribes, suggests areas/tags/title, shows full note draft in Discord
-Pass 2 — user approves → write file + index in DB
-         user rejects  → discard
-         user requests edit → agent revises → repeat Pass 2
-```
-
-Agent suggests classification. User never supplies domain/areas/tags manually — that is the agent's job. Never write with `approved=True` without user seeing the draft.
-
-### Tunables
-
-| Parameter | Value | Location |
-|---|---|---|
-| Search default limit | 10 | `search_vault` param default |
-| List notes default limit | 50 | `list_notes` param default |
-| RRF fusion constant (k) | 60 | `search.py` — `1/(k + rank)` |
-| Embedding model | `google/gemini-embedding-2` | `embedder.py` default; overridable via model field in DB |
-| Embedding dimensions | 768 | `knowledge.vault_embeddings.embedding vector(768)` |
-| PDF word limit | 15,000 words | `pdf_reader.py` `WORD_LIMIT` — truncates longer PDFs |
-| PDF fetch timeout | 10s | `pdf_reader.py` `TIMEOUT` |
-| Image max size | 20MB | `vision.py` `MAX_BYTES` |
-| Image fetch timeout | 30s | `vision.py` `TIMEOUT` |
-| Vision model | `google/gemini-2.0-flash` | `vision.py` default; override via `VISION_MODEL` env var |
-| Transcript tier order | youtube-transcript-api → yt-dlp VTT → YouTube Data API v3 | `transcript.py` |
-| Search strategy | `hybrid` (default) | `search_vault` `strategy` param: `keyword` (ParadeDB BM25 only), `semantic` (pgvector cosine only), `hybrid` (RRF combining both). Agent picks based on query type. |
+> Concrete tool definitions, tunables, and embedding model choices: [SPECS](docs/specs/).
 
 ---
 
 ## finance-service
 
-**Port:** 8101
-**Transport:** streamable-HTTP
-**Status:** Specced
-**Spec:** `docs/specs/20260701-assistant-v1-design.md` (personal tools), `docs/specs/20260701-cfo-v1-design.md` (business tools)
-**Systemd unit:** `systemd/finance-service.service`
+**Port:** 8101  
+**DB role (personal):** `svc_finance_personal`  
+**DB role (business):** `svc_finance_business`  
+**Consumers (personal):** Ayah (all personal tools)  
+**Consumers (business):** Hala (all business tools), Omar (2 read-only tools)
 
-One service binary, two DB roles. Personal and business tools share the same HTTP server but connect as different PostgreSQL roles — a compromise of one does not expose the other.
+**Responsibility:** Personal finance — transaction logging, balance reporting, monthly reconciliation, multicurrency support, zakat calculation. Business finance — revenue tracking, expense categorization, financial reporting.
 
-### Consumers and tool access
+**Contract:** Personal and business tools are isolated in the same service but behind separate DB roles. Ayah cannot call business finance tools. Hala cannot call personal finance tools. This isolation is enforced at the `tools.include` list level and at the DB role level.
 
-| Agent | DB role used | Tools included |
-|---|---|---|
-| Ayah (`assistant`) | `svc_finance_personal` | All personal tools |
+**Key capability boundary:** `finance-service` contains internal precision helpers for sub-unit currency handling. Calculations that agents need to invoke explicitly (amortization, zakat arithmetic, compound interest) are exposed through `math-service`.
 
-DB role grants: `docs/SCHEMAS.md` → DB roles.
-
-### Tools — personal (Ayah)
-
-| Tool | Key params | What it does |
-|---|---|---|
-| `record_transaction` | `amount`, `currency`, `direction`, `category`, `date`, `approved=False` | Parse → approval gate → commit to `finance_personal.transactions` |
-| `spending_report` | `period`, `account?`, `category?` | Totals by category for a period, in original currency + converted to `default_currency` (configurable tunable — e.g. SAR if you have SAR/AED/INR accounts) |
-| `budget_status` | `period?` | Current spend vs budget per category |
-| `account_balance` | `account?` | Balance per account or all accounts |
-| `reconcile_statement` | `source`, `period` | Bank statement (PDF or CSV via CDN URL) → diff vs ledger |
-| `add_category` | `name`, `parent_id?`, `domain` | Add L1 or L2 spending category |
-| `zakat_status` | — | Current hawl state, assets on record, estimated obligation |
-| `calculate_zakat` | `hawl_id` | Full zakat calc at hawl end — fetches gold price, computes obligation |
-| `log_riba` | `transaction_id`, `amount`, `currency`, `riba_type`, `description` | Route to `finance_personal.riba_log`, not to P&L |
-| `riba_report` | `period?` | All riba entries for a period |
-
-**Hawl tracking:** `zakat_status` checks whether total assets across all accounts have exceeded the nisab threshold and, if so, when. `start_date` in `finance_personal.zakat_hawl` is the date nisab was first crossed. `end_date = start_date + 354 days`. When `end_date` is reached, `calculate_zakat` fetches the current gold price and computes the obligation. Open a new hawl record each time nisab is crossed after a gap.
-
-Business finance tools (Hala, Omar): `docs/future/SERVICES.md`.
-
-### Dependencies
-
-`pymupdf` (statement PDF extraction), `httpx` (FX API, gold price API), `hijridate` (Hijri hawl boundary dates).
-
-Env vars: `FX_API_KEY` (exchangerate-api.com), `GOLD_API_KEY` (metals-api.com or goldpricez.com).
-
-### Tunables
-
-| Parameter | Value | Notes |
-|---|---|---|
-| FX rate cache | Per-date, same-day reuse | `finance.fx_rates` keyed by `(date, from_currency, to_currency)` |
-| FX API free tier | 1,500 requests/month | exchangerate-api.com |
-| Gold price fetch | Only at hawl calculation time | Cached in `finance.zakat_hawl.gold_price_usd` |
-| Default currency | SAR (configurable) | All amounts stored in `amount_base` converted to `default_currency`. Change via `DEFAULT_CURRENCY` env var in `nizam.env`. |
-| Budget period format | `YYYY-MM` | `finance.budgets.period` |
+> Concrete tool definitions, tunables: [SPECS](docs/specs/).
 
 ---
 
 ## personal-service
 
-**Port:** 8102
-**Transport:** streamable-HTTP
-**Status:** Specced
-**Spec:** `docs/specs/20260701-assistant-v1-design.md`
-**DB role:** `svc_personal` (RW on `personal.*`, INSERT on `audit.log`)
-**Systemd unit:** `systemd/personal-service.service`
+**Port:** 8102  
+**DB role:** `svc_personal`  
+**Consumers:** Ayah (all tools)
 
-### Consumers and tool access
+**Responsibility:** Habits (definitions and daily logs), goals, projects, tasks, and journal entries for the personal domain. Ayah is the sole writer. No other agent accesses this service.
 
-| Agent | Tools included |
-|---|---|
-| Ayah (`assistant`) | All tools (no filter) |
+**Contract:** Journal entries are written to both the vault (`~/nizam-vault/personal/journal/`) and the DB. The DB copy exists for search; the vault copy is the source of truth.
 
-### Tools
-
-| Tool | Key params | What it does |
-|---|---|---|
-| `add_habit` | `name`, `description`, `frequency`, `rest_days?` | Define a tracked habit. `frequency` is an RRule string (e.g. `FREQ=DAILY`, `FREQ=WEEKLY;BYDAY=MO,WE,FR`). `rest_days` lists days that don't break the streak (e.g. `['Saturday', 'Sunday']`). |
-| `log_habit` | `habit_id`, `date?`, `note?` | Record completion for today (or specified date) |
-| `habit_streak` | `habit_id` | Current streak and recent log |
-| `habit_summary` | — | All habits, streaks, last 7 days |
-| `add_goal` | `title`, `description`, `target_date` | Create a goal |
-| `add_milestone` | `goal_id`, `title`, `due_date` | Add milestone to a goal |
-| `update_goal` | `goal_id`, `status?`, `note?` | Change goal status or add progress note |
-| `goal_summary` | — | All active goals with milestone status |
-| `add_task` | `title`, `description?`, `due_date?`, `priority?`, `energy?`, `goal_id?` | Create a task. `energy` = low/medium/high effort level required. |
-| `complete_task` | `task_id` | Mark task done |
-| `task_list` | `due_date?`, `goal_id?`, `status?` | Open tasks, filterable |
-| `add_journal` | `entry_date`, `prompt?`, `content`, `approved=False` | Write journal entry — approval-gated |
-| `journal_search` | `query`, `limit?` | Full-text search across journal entries |
-| `journal_entry` | `entry_id` | Read a specific entry |
-
-Habit streak computation is in Python — a gap `> 1 day` in `logged_date` breaks the streak, unless the day is in `rest_days`.
-
-**Goals vs milestones:** Goals are outcome targets with a target date (e.g. "Read 20 books this year"). Milestones are checkpoints within a goal with their own due dates (e.g. "Read 5 books by March"). Use `add_milestone` to break a goal into steps.
-
-### Tunables
-
-| Parameter | Value | Notes |
-|---|---|---|
-| Habit streak break threshold | > 1 day gap in `logged_date` (excluding rest_days) | Computed in Python, not DB |
-| Journal search | ParadeDB BM25 | Consistent with vault search — no tsvector |
+> Concrete tool definitions: [SPECS](docs/specs/).
 
 ---
 
-## Infrastructure tunables
+## math-service
 
-Infrastructure tunables apply to both personal and business deployments.
+**Port:** 8103  
+**Consumers:** Hala (CFO — financial calculations), Ayah (personal finance calculations)
 
-Parameters for non-MCP components. Change locations noted — not env vars unless stated.
+**Responsibility:** Arbitrary-precision arithmetic as an agent-callable MCP service. Covers financial rounding, currency conversion with sub-unit handling, compound interest, amortization, and zakat arithmetic. Exists so agents never do financial math inline.
 
-### LiteLLM proxy (`config/litellm.yaml`)
+**Contract:** Stateless — no DB access, no writes. finance-service also uses internal precision helpers for sub-unit conversion; math-service is for calculations that require explicit agent invocation or cross-service reuse.
 
-| Parameter | Value | Notes |
-|---|---|---|
-| Port | 4000 | `--port 4000` in systemd ExecStart |
-| Workers | 1 | `--num_workers 1` in systemd ExecStart |
-| Request timeout | 600s | `litellm_settings.request_timeout` |
-| Cache type | Redis exact-match | `litellm_settings.cache_params.type: redis` |
-| Cache TTL | 3600s | `litellm_settings.cache_params.ttl` |
-| Cached call types | `acompletion`, `completion` | `supported_call_types` |
-| DB unavailable behaviour | Allow requests | `allow_requests_on_db_unavailable: true` — proxy starts even if DB is down |
-| Spend tracking | Per end-user | `store_end_user: true` — passes Hermes profile name to `SpendLogs.end_user` |
+---
 
-### Redis
+## crm-service
 
-| Parameter | Value | Notes |
-|---|---|---|
-| Bind | `127.0.0.1:6379` | Default Ubuntu package config |
-| LiteLLM cache TTL | 3600s | Set in `config/litellm.yaml` |
-| Model price cache TTL | 86400s (24h) | `scripts/metrics-llm.py` — key `nizam:openrouter:model_prices` |
+**Port:** 8104  
+**DB role:** `svc_crm`  
+**Consumers:** Omar (all tools), Raha (read-only summary tools)
 
-### fail2ban
+**Responsibility:** Contact management, pipeline tracking, interaction history for the business domain.
 
-Config defaults and edit location: `docs/SECURITY.md` → VPS hardening.
+> Concrete tool definitions: [SPECS](docs/specs/).
 
-### Prometheus
+---
 
-| Parameter | Value | Notes |
-|---|---|---|
-| Scrape interval | 15s | node-exporter default — picks up `.prom` file changes within 15s. Grafana dashboard auto-refresh should match (set to 15s in dashboard settings). |
-| Textfile dir | `/var/lib/prometheus/node-exporter/` | node-exporter `--collector.textfile.directory` |
-| Grafana datasource UID | `nizam-prometheus` | Hardcoded in both dashboard JSON files — must match |
+## analytics-service
 
-### Metrics timers
+**Port:** 8105  
+**DB role:** `svc_analytics`  
+**Consumers:** Mira (all tools), Raha (read-only)
 
-| Script | Timer interval | OnCalendar offset | Output file |
-|---|---|---|---|
-| `scripts/metrics-llm.py` | Every 1 minute | :00 | `nizam-llm.prom` |
-| `scripts/metrics-services.sh` | Every 5 minutes | :02 | `nizam-services.prom` |
-| `scripts/metrics-toolcalls.py` | Every 5 minutes | :04 | `nizam-toolcalls.prom` |
-| `scripts/watch-inventory.sh` | Hourly | :30 | Discord webhook on change |
+**Responsibility:** Campaign performance, content metrics, audience data for the business domain. Phase 6e.
 
-Timers are staggered by offset so load does not peak simultaneously.
+> Concrete tool definitions: [SPECS](docs/specs/).
 
-Change timer interval: edit the corresponding `.timer` file in `systemd/`, run `sudo systemctl daemon-reload && sudo systemctl restart <name>.timer`.
+---
 
-### Hermes agent limits
+## Agent toolset contracts
 
-Tunable values (max_turns, gateway_timeout, compression): `docs/HERMES.md` → Agent limits.
+### Common config (all agents)
+
+Every profile has:
+- `allow_lazy_installs: false`
+- `redact_secrets: true`
+- `approvals.mode: manual`
+- `DISCORD_ALLOWED_USERS` set to owner's Discord user ID only
+- `discord.allowed_channels` scoped to the agent's own channels
+
+### Nazim (system admin)
+
+- Terminal: enabled, scoped via `command_allowlist` + `/etc/sudoers.d/nazim-nizam`
+- Cron: `cron_mode: manual`
+- MCP: none
+- Sudo: scoped to service restart commands only — not full sudo
+
+### Noor (knowledge curator)
+
+- Terminal: disabled
+- Cron: `cron_mode: deny`
+- MCP: `knowledge-service` — all tools
+
+### Ayah (personal assistant)
+
+- Terminal: disabled
+- Cron: `cron_mode: deny`
+- MCP: `finance-service` (personal tools only), `personal-service` (all tools), `knowledge-service` (read-only), `math-service` (all tools)
+
+### Raha (chief of staff)
+
+- Terminal: disabled
+- Cron: `cron_mode: manual`
+- MCP: none — coordinates via kanban delegation to C-suite agents
+- No direct data access: cannot read or write any database directly
+
+### Hala (CFO)
+
+- Terminal: disabled
+- Cron: `cron_mode: deny`
+- MCP: `finance-service` (business tools only), `math-service` (all tools)
+
+### Omar (CRO)
+
+- Terminal: disabled
+- Cron: `cron_mode: deny`
+- MCP: `crm-service` (all tools), `finance-service` (2 read-only tools)
+
+### Reem (CTO)
+
+- Terminal: enabled, `command_allowlist` for read-only diagnostics only — no restarts, no installs
+- Cron: `cron_mode: deny`
+- MCP: `knowledge-service` (read-only), GitHub MCP (read + PR write)
+- Delegation: `max_spawn_depth: 2`, `subagent_auto_approve: false`, `max_concurrent_children: 3`
+
+### Mira (CMO)
+
+- Terminal: disabled
+- Cron: `cron_mode: deny`
+- MCP: `analytics-service` (all tools), `knowledge-service` (read-only)

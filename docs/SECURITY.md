@@ -1,332 +1,171 @@
-# Nizam-OS — Security
+# Security
 
-**Last updated:** 2026-07-01
-
-Security model across all layers. When adding a new agent or service, check every section — new components must fit the model, not bypass it.
+Security model across all layers. When adding a new agent or service, every section here applies — new components must fit the model, not bypass it.
 
 ---
 
 ## Threat model
 
 | Threat | Source | Primary control |
-|---|---|---|
-| External attacker on VPS | Internet | UFW + fail2ban + SSH hardening + Tailscale |
-| Compromised agent doing too much | Rogue LLM output | Tool scoping, command_allowlist, sudoers, DB role isolation |
+|--------|--------|-----------------|
+| External attacker on VPS | Internet | UFW + fail2ban + SSH key-only + Tailscale |
+| Agent doing too much | Rogue LLM output | Tool scoping, command_allowlist, sudoers, DB role isolation |
 | Prompt injection | Discord messages, web content, ingested PDFs, vault content | Manual approvals + DISCORD_ALLOWED_USERS + redact_secrets |
-| Secret leakage | Agent tool output, git commits | redact_secrets + sops encryption + gitignore |
+| Secret leakage | Agent tool output, git commits | redact_secrets + age encryption + gitignore |
 | Cross-agent data access | Agent reading another agent's domain | DB role grants, MCP tool include lists |
-| Silent package install | Agent running pip at runtime | allow_lazy_installs: false |
+| Silent package install | Agent running pip at runtime | allow_lazy_installs: false on all profiles |
 | Rogue cron creation | Agent scheduling arbitrary jobs | cron_mode: deny on most profiles |
-| Spend abuse | Agent making excessive LLM calls | LiteLLM virtual keys + spend tracking (pending DB init) |
-| Delegation chain overreach | Sub-agent spawning further sub-agents | max_spawn_depth: 1 |
-| Supply chain | npm / pip packages pulled at runtime | uv lockfile + allow_lazy_installs: false (npx is the gap) |
+| Spend abuse | Agent making excessive LLM calls | LiteLLM virtual keys + spend tracking |
+| Delegation chain overreach | Sub-agent spawning further sub-agents | max_spawn_depth: 2 on Reem |
+| Supply chain | npm / pip packages at runtime | uv lockfile + allow_lazy_installs: false |
+
+---
+
+## Trust boundaries
+
+**Owner → agents:** The owner communicates through Discord. `DISCORD_ALLOWED_USERS` restricts which Discord user IDs can interact with each agent. Only the owner's ID is listed.
+
+**Agent → tools:** Every tool call surfaces to the owner in Discord before executing (`approvals.mode: manual`). Agents cannot act without human confirmation.
+
+**Agent → MCP services:** Each agent's `config.yaml` specifies exactly which MCP tools it can call. Tools not in `tools.include` are invisible to the agent.
+
+**Service → database:** Each service connects as its own PostgreSQL role. Roles hold grants only on the schemas they need. DB-layer isolation — not convention.
+
+**LiteLLM as the single LLM chokepoint:** No agent connects directly to any external model API. All inference routes through `localhost:4000`. Spend tracking, caching, and key rotation are centralized here.
 
 ---
 
 ## VPS hardening
 
-**UFW (firewall)**
+**Firewall:** UFW — allow inbound SSH (22), HTTP/HTTPS (80/443 for Let's Encrypt if needed). Default deny inbound. Tailscale subnet allowed.
 
-```
-Allowed inbound: 22 (SSH), 80, 443, Tailscale subnet (100.64.0.0/10)
-Default policy:  deny inbound, allow outbound
-```
+**SSH:** Key-only authentication. Password auth disabled. Tailscale IP is the intended management path.
 
-80 and 443 are open for Let's Encrypt ACME challenges (port 80) and reverse proxy if any service is ever publicly served (port 443). If the VPS stays fully private-only via Tailscale, both can be closed: `sudo ufw delete allow 80 && sudo ufw delete allow 443`.
+**fail2ban:** Default SSH jail. Bans after repeated failed login attempts.
 
-Check: `sudo ufw status verbose`
-
-**fail2ban**
-
-Default SSH jail. Bans after 5 failed login attempts within 10 minutes. Ban duration: 1 hour.
-
-Check: `sudo fail2ban-client status sshd`
-
-**SSH**
-
-Key-only authentication. Password auth disabled in `/etc/ssh/sshd_config`:
-```
-PasswordAuthentication no
-PubkeyAuthentication yes
-```
-
-Check: `sudo sshd -T | grep -E "passwordauth|pubkeyauth"`
-
-**Tailscale**
-
-VPS management access via Tailscale VPN only in normal operations. SSH on public IP is allowed by UFW but Tailscale IP is the intended path. No services are publicly exposed.
-
-Check: `sudo tailscale status`
-
-**unattended-upgrades**
-
-Auto-applies security updates from Ubuntu security repos. Does not auto-restart services — manual restart after kernel updates.
-
-Check: `systemctl status unattended-upgrades`
+**unattended-upgrades:** Auto-applies Ubuntu security updates. Does not auto-restart services.
 
 ---
 
 ## Network boundaries
 
-All internal services bind to `127.0.0.1` only. Nothing is publicly reachable except SSH (port 22) and HTTP/HTTPS (80/443 — unused currently).
+All internal services bind to `127.0.0.1` only. No service is publicly reachable except SSH.
 
-| Service | Bind address | Reachable from |
-|---|---|---|
-| PostgreSQL | `127.0.0.1:5432` | Localhost only |
-| Redis | `127.0.0.1:6379` | Localhost only |
-| LiteLLM proxy | `127.0.0.1:4000` | Localhost only |
-| knowledge-service | `127.0.0.1:8100` | Localhost only (Curator v1+) |
-| finance-service | `127.0.0.1:8101` | Localhost only |
-| personal-service | `127.0.0.1:8102` | Localhost only |
-| crm-service | `127.0.0.1:8104` | Localhost only |
-| Prometheus | `127.0.0.1:9090` | Localhost only |
-| Grafana | `127.0.0.1:3000` | Localhost only (access via Tailscale) |
-
-**LiteLLM as the single LLM chokepoint.** All agent inference routes through `localhost:4000`. No agent connects directly to OpenRouter or any external model API. This means: spend tracking, caching, token counting, and key rotation all happen at one place.
+| Layer | Binding |
+|-------|---------|
+| PostgreSQL | 127.0.0.1:5432 |
+| Redis | 127.0.0.1:6379 |
+| LiteLLM proxy | 127.0.0.1:4000 |
+| All MCP services | 127.0.0.1:PORT |
+| Prometheus | 127.0.0.1:9090 |
+| Grafana | 127.0.0.1:3000 (access via Tailscale) |
 
 ---
 
 ## Secrets
 
-**At rest**
+**At rest:** All secrets stored in `secrets/nizam.env`, encrypted with age. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts everything. Plaintext secrets are never committed to git.
 
-Secret inventory, file locations, and encryption model: `docs/SECRETS.md` → Storage model.
+**In transit:** Agent → LiteLLM → OpenRouter over HTTPS. Agent → MCP services over HTTP on localhost (loopback only — TLS not needed). Grafana → PostgreSQL via local socket.
 
-**Password storage:** Add non-env passwords (e.g. bank portal passwords for finance reconciliation) to `secrets/nizam.env` under clearly named vars (e.g. `BANK_ALINMA_PASSWORD`). They are encrypted at rest with the same age key and never committed in plaintext. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts all secrets.
+**In agent output:** `redact_secrets: true` on all profiles — Hermes scrubs known secret patterns from tool output before returning to the agent. Best-effort filter, not a guarantee.
 
-**In transit**
+---
 
-- Agent → LiteLLM → OpenRouter: HTTPS
-- Agent → Discord: HTTPS (Hermes handles)
-- Agent → MCP services: HTTP on localhost (no TLS needed — loopback only)
-- Grafana → PostgreSQL: local socket (no TLS needed — same host)
+## Database roles
 
-**In agent output**
+| Role | Grants | Cannot access |
+|------|--------|--------------|
+| `svc_litellm` | Owns `litellm` schema | Everything else |
+| `svc_knowledge` | RW `knowledge.*`, INSERT `audit.log` | Everything else |
+| `svc_finance_personal` | RW `finance_personal.*`, INSERT `audit.log` | `finance_business.*`, `personal.*` |
+| `svc_personal` | RW `personal.*`, INSERT `audit.log` | `finance.*`, `business.*` |
+| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | `finance_personal.*` |
+| `svc_crm` | RW `crm.*`, INSERT `audit.log` | `finance.*` |
+| `svc_analytics` | RW `analytics.*`, INSERT `audit.log` | Everything else |
+| `grafana` | SELECT on all schemas | Any write |
 
-`redact_secrets: true` in all profiles — Hermes scrubs known secret patterns from tool output before returning to the agent. This is a best-effort filter, not a guarantee. Do not rely on it as the sole control.
+**Audit invariant:** No service role holds UPDATE or DELETE on `audit.log`. Insert-only by grant.
 
 ---
 
 ## Agent autonomy controls
 
-Applied to all profiles. Any new profile must include all of these.
+Applied to all profiles without exception. Any new profile must include all of these.
 
-Config block applied to all profiles: `docs/AGENTS.md` → Common config.
+| Control | Rule |
+|---------|------|
+| `allow_lazy_installs: false` | No runtime pip install — any agent can pull arbitrary code otherwise |
+| `approvals.mode: manual` | Every tool call (file write, terminal, MCP, memory) requires Discord approval |
+| `cron_mode: deny` | No persistent scheduled jobs without explicit setup approval |
+| `redact_secrets: true` | Hermes scrubs secret patterns from tool output |
+| `DISCORD_ALLOWED_USERS` | Only the owner's Discord user ID can interact with any agent |
+| `discord.allowed_channels` | Each agent sees only its own channels |
+| Compression model pinned | Separate from primary model; prevents cost bleed |
 
-**`allow_lazy_installs: false` is the most important setting.** Default in Hermes is `true`. Without this, any agent can silently run `pip install <anything>` and execute arbitrary code via a new package.
+### Terminal restrictions
 
-**`approvals.mode: manual`** means every file write, terminal command, MCP call, and memory write surfaces to the user in Discord before executing. Agents cannot take irreversible actions autonomously.
-
-**`cron_mode: deny`** prevents agents from creating persistent scheduled jobs without explicit approval. Nazim and Raha have `cron_mode: manual` (allowed, but each run still requires approval during setup).
-
-### Per-agent terminal restrictions
-
-| Agent | Terminal enabled | Restriction mechanism |
-|---|---|---|
-| Nazim | Yes | `command_allowlist` + `/etc/sudoers.d/nazim-hermes` |
-| Reem | Yes | `command_allowlist` (read-only diagnostics only) |
-| All others | No | `terminal` toolset disabled |
-
-Exact `command_allowlist` values for Nazim and Reem are in `docs/AGENTS.md` (authoritative). Summary:
-- Nazim: service restart + diagnostics only. Sudo scoped via `/etc/sudoers.d/nazim-hermes` — not full sudo.
-- Reem: read-only diagnostics only. No restarts, no installs, no deployments.
-
-Any command not in the allowlist requires manual Discord approval before execution.
-
-### Who can talk to agents
-
-`DISCORD_ALLOWED_USERS` in each profile's `.env` — whitelist of Discord user IDs. Only listed users can interact with the agent. Currently not set (Phase 2 fix — see Known Gaps). Until set, any server member can chat with any agent.
-
-`discord.allowed_channels` in `config.yaml` — each agent sees only its own channels. Noor cannot read `#cfo-office`. Hala cannot read `#learning`.
-
----
-
-## Access control / least privilege
-
-### Database roles
-
-Each service connects as its own PostgreSQL role. Roles are not shared between services.
-
-| Role | What it can do | What it cannot do |
-|---|---|---|
-| `svc_knowledge` | RW `knowledge.*`, INSERT `knowledge.vault_audit` | Touch any other schema |
-| `svc_finance_personal` | RW `finance_personal.*`, RO `personal.*`, INSERT `audit.log` | Access `finance_business.*` |
-| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | Access `finance_personal.*` |
-| `svc_personal` | RW `personal.*`, INSERT `audit.log` | Access `finance.*` or `business.*` |
-| `svc_crm` | RW `crm.*`, INSERT `audit.log` | Direct access to `business.finance.*` |
-| `grafana` | SELECT only on all schemas | Any write |
-
-**Isolation is enforced at the DB layer, not just by convention.** `svc_finance_personal` has zero grants on `business.finance.*`. Verified with `\dp` in psql after each migration.
-
-### MCP tool include lists
-
-Each agent's `config.yaml` specifies exactly which MCP tools it can call. Tools not in `include` are invisible to the agent.
-
-| Agent | Can call `ingest`/write tools | Rationale |
-|---|---|---|
-| Noor | Yes — owns vault writes | Mandate |
-| Reem | No — `search_vault`, `get_note`, `list_notes` only | Read-only access |
-| Mira | No — same read-only subset | Read-only access |
-| Hala | Business finance tools only | No personal finance tools |
-| Omar | CRM tools + 2 finance read tools | No write access to finance |
-
-**Raha has zero MCP access.** `mcp_servers: {}` in her config. All data access via delegation to child agents. This prevents Raha from directly reading or writing any data.
-
-### GitHub access (Reem)
-
-PAT scopes: `Contents: Read`, `Pull requests: Read+Write`, `Issues: Read`, `Metadata: Read`.
-
-Never admin scope. Excluded tools: `delete_*`, `create_repository`, `manage_webhooks`, `add_collaborator`. These are excluded via the MCP `tools.include` list — even if the PAT had the scope, the tool is not exposed.
+| Agent | Terminal | Restriction |
+|-------|----------|-------------|
+| Nazim | Enabled | `command_allowlist` + `/etc/sudoers.d/nazim-nizam` (service restart only — not full sudo) |
+| Reem | Enabled | `command_allowlist` — read-only diagnostics only, no restarts, no installs |
+| All others | Disabled | `terminal` toolset not loaded |
 
 ---
 
 ## Prompt injection
 
-**What it is:** A malicious string in user input (Discord), web content (Reem's `web` toolset), an ingested PDF, or a vault note that attempts to override agent instructions.
+**Untrusted input surfaces:** Discord messages, web search results (Reem, Omar, Mira), PDF content, image descriptions from vision model, YouTube transcripts, bank statement content.
 
-**Why it matters here:** Agents have real tool access — terminal, file writes, MCP mutations, vault ingestion. A successful injection could trigger unintended actions.
+**Controls:** `DISCORD_ALLOWED_USERS` limits message senders. `approvals.mode: manual` means every tool call surfaces to the owner — injection cannot act without human confirmation. `redact_secrets: true` reduces exfiltration value. Minimal tool surface per agent limits blast radius.
 
-**Controls in place:**
-
-| Control | Covers |
-|---|---|
-| `DISCORD_ALLOWED_USERS` whitelist | Limits who can send messages to agents |
-| `approvals.mode: manual` | Every tool call surfaces to user before executing — injection cannot act without human seeing it |
-| `redact_secrets: true` | Reduces value of exfiltration attempts via tool output |
-| MCP tool include lists | Agents have minimal tool surface — fewer tools = less damage from injection |
-| Vault approval gate | Noor's 3-pass workflow requires user confirmation before any vault write |
-| `allow_lazy_installs: false` | Prevents "install this package" injection from succeeding |
-
-**Residual risk:** Manual approval mode is the main defense. A sufficiently convincing injection could trick the user into approving a malicious action — the user sees the tool call but must recognise it as malicious. No automated content inspection is in place.
-
-**Untrusted input sources:**
-- Discord messages (primary)
-- Web search results (Reem, Omar, Mira have `web` toolset)
-- PDF content via `ingest_pdf`
-- Image descriptions via `ingest_image` (LiteLLM vision output — secondhand trust)
-- YouTube transcripts
-- Bank statement content via `reconcile_statement`
-
-Any of these can contain injection attempts. The approval gate is the last line of defense for all of them.
+**Residual risk:** A sufficiently convincing injection could trick the owner into approving a malicious action. The owner sees the tool call but must recognize it as malicious. No automated content inspection is in place.
 
 ---
 
-## Audit trail
+## Delegation security (Reem only)
 
-Every service that mutates data writes to `audit.log` (after migration `0003_audit_schema.sql` runs).
+Reem is the only agent with the `delegation` toolset.
 
-```sql
-audit.log (id, schema_name, table_name, operation, actor, row_id, before_state, after_state, created_at)
-```
-
-`actor` = Hermes profile name. Every write is attributed to the agent that made it.
-
-**Append-only enforcement:** No `UPDATE` or `DELETE` granted to any service role on `audit.log`. Insert-only by grant, not trigger. Not court-grade tamper-proof (a DB superuser could alter rows), but sufficient for internal accountability and debugging.
-
-**Current state:** `audit.log` does not exist yet — migration `0003` not run. `knowledge.vault_audit` is a temporary substitute (knowledge-service only, different schema).
-
-**Grafana:** The `grafana` role has SELECT on `audit.log` — audit data can be queried and visualised without service credentials.
-
----
-
-## Delegation security (Reem sandbox agents)
-
-Reem is the only agent with `delegation` toolset. Raha uses `kanban` for C-suite coordination — she does not spawn child agents.
-
-```yaml
-delegation:
-  max_spawn_depth: 1        # Reem → sandbox agent OK. Sandbox agent → anyone: blocked.
-  subagent_auto_approve: false   # sandbox agent tool calls still require Discord approval
-  max_concurrent_children: 2
-```
-
-**Context isolation:** Reem serialises all relevant context into each sandbox spawn. Sandbox agents start with zero session history.
-
-**Channel isolation:** Sandbox agents never post to Discord directly. Reem synthesises their output and posts in `#cto-office`.
-
-**No MCP for Raha:** Raha cannot directly query any database or service. She creates kanban tasks; C-suite agents respond independently. This means Raha cannot be tricked into directly accessing data outside her mandate — she has no MCP tools to do so.
+- `max_spawn_depth: 2` — Reem can spawn sandbox agents; sandbox agents can spawn further.
+- `subagent_auto_approve: false` — sandbox agent tool calls still require Discord approval.
+- `max_concurrent_children: 3`.
+- Sandbox agents never post to Discord directly. Reem synthesizes and posts in `#cto-office`.
+- Raha coordinates via kanban, not delegation — she has zero MCP access and zero delegation toolset. She cannot directly read or write any database.
 
 ---
 
 ## Supply chain
 
-**Python deps (uv workspace)**
+**Python:** All dependencies declared in `pyproject.toml` per service and pinned in `uv.lock`. `allow_lazy_installs: false` prevents runtime installation.
 
-All Python dependencies are declared in `pyproject.toml` per service and pinned in `uv.lock`. `allow_lazy_installs: false` prevents any runtime package installation.
+**Node/npx:** GitHub MCP server (`@modelcontextprotocol/server-github`) is pulled from npm at Hermes session start. This is a trust surface — a compromised npm package could execute arbitrary code. Mitigation: pin a specific version when Reem is built.
 
-Adding a new dep: update `pyproject.toml` → `uv lock` → review lockfile diff → commit both files.
+**Hermes:** Treated as a trusted third-party binary. Never manually patched. Updated only via its official update mechanism.
 
-**npx (GitHub MCP, Reem)**
-
-`npx -y @modelcontextprotocol/server-github` pulls the package from npm at each Hermes session start. This is a trust surface — a compromised npm package could execute arbitrary code on the VPS as `vazir`.
-
-**Accepted risk for now.** Mitigation options (implement when Reem is built):
-- Pin a specific version: `npx -y @modelcontextprotocol/server-github@<version>`
-- Verify package integrity before use (npm `--dry-run`, checksum)
-- Run in a restricted context if Hermes supports it
-
-**Hermes itself**
-
-`~/.hermes/` is installed as a trusted third-party binary. Treated as read-only runtime. Any security issue in Hermes affects all agents. Update Hermes via its official update mechanism only — never manually patch `~/.hermes/` files.
-
-**Tirith (Hermes built-in security)**
-
-Hermes has a built-in security framework (`tirith`) enabled in the default config:
-```yaml
-security:
-  tirith_enabled: true
-  tirith_path: tirith
-  tirith_timeout: 5
-  tirith_fail_open: true   # if tirith check times out, request is allowed through
-```
-
-`tirith_fail_open: true` means a tirith timeout does not block the agent. If tirith is running security checks, a slow or failed check does not deny tool calls. This is the Hermes default — note it.
+**tirith (Hermes built-in security):** Enabled on all profiles. `tirith_fail_open: true` — a tirith timeout allows the request through. Accepted risk at current scale.
 
 ---
 
-## Known gaps (current state — Phase 1)
+## Checklist — adding a new agent
 
-These are accepted risks documented here, not forgotten. All are targeted in Phase 2 (`docs/plans/20260701-immediate-fixes.md`).
-
-| Gap | Risk | Fix |
-|---|---|---|
-| `DISCORD_ALLOWED_USERS` not set on any profile | Any Discord server member can chat with any active agent | Phase 2: set per profile `.env` |
-| `discord.allowed_channels` not set on assistant + cos profiles | Agents may respond in unintended channels | Phase 2: set in `config.yaml` |
-| `allow_lazy_installs: true` in current curator config | Agent can silently `pip install` | Phase 2: set `false` in all profiles |
-| Compression model `provider: auto` | Uses primary model for compression — cost + non-determinism | Phase 2: pin to `deepseek/deepseek-v3-0324` |
-| `/etc/sudoers.d/nazim-hermes` not created | Nazim has no sudo — cannot restart services | Phase 2: create sudoers entry |
-| LiteLLM DB tables not initialised | No spend tracking — spend abuse undetected | Phase 2: run Prisma migration |
-| `audit.log` schema not run | No cross-service audit trail | Phase 3+: run migration 0003 after personal schema |
-| `knowledge.vault_index` schema needs redesign | Current schema doesn't match Curator v1 note format | Phase 3: Curator v1 |
-| npx unpinned for GitHub MCP | npm supply chain risk | Phase 6d: pin version when Reem is built |
-| `tirith_fail_open: true` | Tirith timeout = no security check | Accepted — Hermes default, low risk in current setup |
-
----
-
-## Security checklist — adding a new agent
-
-Before enabling a new profile gateway:
-
-- [ ] `allow_lazy_installs: false` in `config.yaml`
-- [ ] `redact_secrets: true` in `config.yaml`
-- [ ] `approvals.mode: manual` in `config.yaml`
+- [ ] `allow_lazy_installs: false`
+- [ ] `redact_secrets: true`
+- [ ] `approvals.mode: manual`
 - [ ] `cron_mode: deny` (or `manual` if cron is part of the mandate)
-- [ ] `discord.allowed_channels` set to specific channel IDs only
-- [ ] `DISCORD_ALLOWED_USERS` set in profile `.env`
-- [ ] Compression model pinned to `deepseek/deepseek-v3-0324`
-- [ ] MCP `tools.include` lists specified — no unrestricted access unless justified
-- [ ] `terminal` toolset disabled unless mandate requires it; if enabled, `command_allowlist` set
-- [ ] DB role created with minimum required grants — verified with `\dp` in psql
-- [ ] GitHub PAT (if applicable) scoped to minimum required permissions
+- [ ] `discord.allowed_channels` set to the agent's specific channel IDs
+- [ ] `DISCORD_ALLOWED_USERS` set to owner's Discord user ID
+- [ ] Compression model pinned
+- [ ] `tools.include` specified — no unrestricted MCP access
+- [ ] `terminal` disabled unless mandate requires it; if enabled, `command_allowlist` set
+- [ ] Dedicated DB role created with minimum required grants
 
-## Security checklist — adding a new service
-
-Before deploying a new MCP service:
+## Checklist — adding a new service
 
 - [ ] Binds to `127.0.0.1` only — never `0.0.0.0`
-- [ ] Dedicated PostgreSQL role — no shared roles with other services
+- [ ] Dedicated PostgreSQL role — no shared roles
 - [ ] Role grants verified: only the schemas/tables the service needs
 - [ ] INSERT-only on `audit.log` — no UPDATE or DELETE
 - [ ] No secrets hardcoded — all via environment variables from `nizam.env`
-- [ ] Service added to SERVICES.md and SCHEMAS.md
-- [ ] systemd unit `EnvironmentFile` points to `secrets/nizam.env`
+- [ ] Service added to [SERVICES](docs/SERVICES.md) and [SCHEMAS](docs/SCHEMAS.md)
+- [ ] systemd unit reads secrets from `secrets/nizam.env`
