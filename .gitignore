@@ -1,4 +1,3 @@
-# Python
 .venv/
 __pycache__/
 *.py[cod]
@@ -9,19 +8,19 @@ build/
 .ruff_cache/
 .pytest_cache/
 
-# Secrets — never commit plaintext
 *.env
 *-age-key.txt
 secrets.yaml
 *.key
 *.pem
 
-# Runtime / generated
 *.prom
 /tmp/
 hermes/profiles/*/skills/.usage.json.lock
 
-# Logs — rotated by logrotate, not committed
 logs/*.log
 logs/*.gz
 !logs/.gitkeep
+
+archive/
+skills/
