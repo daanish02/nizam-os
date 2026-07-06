@@ -38,14 +38,14 @@ git status secrets/nizam-os.env.enc
 
 If modified: `git add secrets/nizam-os.env.enc && git commit -m "secrets: update encrypted env"`.
 
-**1c. Confirm dashboard JSONs are in `docs/grafana/`**
+**1c. Confirm personal dashboard JSON is in `docs/grafana/`**
 
 ```bash
 ls docs/grafana/
-# Expected: personal-dashboard.json  business-dashboard.json
+# Expected: personal-dashboard.json
 ```
 
-If they don't exist yet, import them from Grafana UI first (Dashboards → ⋮ → Export JSON → Save to file) and commit.
+If it doesn't exist yet, export from Grafana UI (Dashboards → ⋮ → Export JSON → Save to file) and commit. The Business dashboard is Phase 8 scope — it does not exist at Phase 1.
 
 **1d. Wipe**
 
@@ -189,9 +189,8 @@ Open Grafana at `http://<tailscale-ip>:3000` (default login: admin/admin — cha
 **Dashboards:**
 
 3. Dashboards → New → Import → upload `docs/grafana/personal-dashboard.json`
-4. Dashboards → New → Import → upload `docs/grafana/business-dashboard.json`
 
-> Most panels will show "no data" — that's correct. Infrastructure and LLM panels populate immediately. Finance, habits, and knowledge panels populate in Phases 4–5.
+> Most panels will show "no data" — that's correct. Infrastructure and LLM panels populate immediately. Finance, habits, and knowledge panels populate in Phases 4–5. The Business dashboard is Phase 8 scope.
 
 ---
 

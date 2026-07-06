@@ -303,6 +303,8 @@ apt-get install -y loki promtail
 | `metrics-services.timer` | system, timer (5 min) | Write `nizam-services.prom` |
 | `metrics-toolcalls.timer` | system, timer (5 min) | Write `nizam-toolcalls.prom` |
 
+**Staggered scheduling:** timers are offset so no two fire at the same wall-clock time. `metrics-services` fires at `:01/:06/:11...`, `metrics-toolcalls` at `:03/:08/:13...`, `watcher-inventory` at `:05` past each hour. Prevents concurrent process startup from spiking memory.
+
 User services (`hermes-profile-watcher`, hermes gateways) start in Phase 2.
 
 **node-exporter textfile dir:** `/var/lib/prometheus/node-exporter/` — must be owned by `vazir` so metric scripts can write `.prom` files. Created by `foundation.sh` if missing.
@@ -311,7 +313,7 @@ User services (`hermes-profile-watcher`, hermes gateways) start in Phase 2.
 
 ## Observability
 
-Three Grafana dashboards total. The nizam-system dashboard is in nizam-dotfiles (OS health). nizam-os adds two domain dashboards: Personal and Business. Dashboard JSON files are stored in `docs/grafana/` (inside `docs/` so they survive a repo wipe) and imported manually into Grafana.
+Two Grafana dashboards in nizam-os. The nizam-system dashboard is in nizam-dotfiles (OS health). Phase 1 adds the Personal dashboard. The Business dashboard is Phase 8 scope — added when Raha comes live. Dashboard reading files live in `docs/grafana/`.
 
 **Datasources required (created manually before import):**
 
@@ -325,7 +327,6 @@ Three Grafana dashboards total. The nizam-system dashboard is in nizam-dotfiles 
 2. Connections → Data Sources → Add → Prometheus → URL: `http://localhost:9090`, UID: `nizam-prometheus` → Save & Test
 3. Connections → Data Sources → Add → Loki → URL: `http://localhost:3100`, UID: `nizam-loki` → Save & Test
 4. Dashboards → Import → `docs/grafana/personal-dashboard.json`
-5. Dashboards → Import → `docs/grafana/business-dashboard.json`
 
 **Grafana alerts:** Grafana alerting posts to `#alerts` Discord channel via `DISCORD_WEBHOOK_ALERTS` (Phase 2). Alert contact point configured in Grafana UI, not in code.
 
@@ -345,7 +346,7 @@ All panels in one dashboard. Panels that depend on future-phase data show "no da
 | Cache hit rate today | Gauge | `nizam_llm_cache_hit_rate_today` | 1 |
 | Requests today | Stat | `nizam_llm_requests_today` | 1 |
 | Token usage today (in/out) | Stat (2 panels) | `nizam_llm_input_tokens_today`, `nizam_llm_output_tokens_today` | 1 |
-| Spend by model (personal agents) | Bar chart | `nizam_llm_spend_usd_total{profile=~"ayah\|noor\|nazim"}` | 1 |
+| Spend by model (personal agents) | Bar chart | `nizam_llm_spend_usd_total{profile=~"ayah\|noor\|nazim\|rashid"}` | 1 |
 | Avg latency by model (1h) | Time series | `nizam_llm_avg_latency_ms_1h` | 1 |
 | Tool calls today by tool | Bar chart | `nizam_tool_calls_today` (personal profiles) | 1 |
 | Tool error rate | Stat | `nizam_tool_errors_total / nizam_tool_calls_total` | 1 |
@@ -388,39 +389,9 @@ All panels in one dashboard. Panels that depend on future-phase data show "no da
 
 ---
 
-### Business Dashboard (`docs/grafana/business-dashboard.json`)
+### Business Dashboard
 
-Same structural sections as Personal but scoped to business agents and schemas.
-
-**Infrastructure panels (Phase 1):**
-
-Same layout as Personal dashboard infrastructure panels, but `profile=~"raha|hala|omar|reem|mira"` label filter on LLM metrics. Services panel shows full service list (business + personal).
-
-**Business finance panels (Phase 6b — Hala):**
-
-| Panel | Type | Source | Phase |
-|-------|------|--------|-------|
-| Revenue this month | Stat | PostgreSQL `finance_business` | 6b |
-| Expenses this month | Stat | PostgreSQL `finance_business` | 6b |
-| Burn rate | Stat | PostgreSQL `finance_business` | 6b |
-| Cash position | Stat | PostgreSQL `finance_business` | 6b |
-| Revenue vs expenses (monthly) | Bar chart | PostgreSQL `finance_business` | 6b |
-| Expense by category | Bar chart | PostgreSQL `finance_business` | 6b |
-
-**CRM panels (Phase 6c — Omar):**
-
-| Panel | Type | Source | Phase |
-|-------|------|--------|-------|
-| Deals by pipeline stage | Bar chart | PostgreSQL `crm` | 6c |
-| Interactions this week | Stat | PostgreSQL `crm` | 6c |
-| Active contacts | Stat | PostgreSQL `crm` | 6c |
-
-**Marketing panels (Phase 6e — Mira):**
-
-| Panel | Type | Source | Phase |
-|-------|------|--------|-------|
-| Campaign performance | Time series | PostgreSQL `analytics` | 6e |
-| Content engagement | Bar chart | PostgreSQL `analytics` | 6e |
+Phase 8 scope. Added when Raha (chief of staff) comes live. See Phase 8 spec for panel definitions.
 
 ---
 

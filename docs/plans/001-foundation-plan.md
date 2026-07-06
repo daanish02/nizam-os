@@ -10,7 +10,7 @@
 
 ## Before You Start
 
-Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` and `docs/grafana/business-dashboard.json` are committed before wiping.
+Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` is committed before wiping. The Business dashboard is Phase 8 scope and does not exist at Phase 1.
 
 **Prerequisite:** `~/nizam-dotfiles/docs/001-setup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, node-exporter). Phase 1 builds on top of that baseline.
 
@@ -864,7 +864,7 @@ WantedBy=multi-user.target
 Description=Run inventory watcher hourly
 
 [Timer]
-OnCalendar=hourly
+OnCalendar=*:05:00
 Persistent=true
 
 [Install]
@@ -1394,12 +1394,10 @@ WantedBy=multi-user.target
 ```ini
 [Unit]
 Description=Run metrics-services every 5 minutes
-Requires=metrics-services.service
 
 [Timer]
-OnBootSec=60
-OnUnitActiveSec=5min
-Unit=metrics-services.service
+OnCalendar=*:1/5
+Persistent=true
 
 [Install]
 WantedBy=timers.target
@@ -1588,7 +1586,7 @@ WantedBy=multi-user.target
 Description=Run tool call metrics collector every 5 minutes
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*:3/5
 Persistent=true
 
 [Install]
@@ -1793,7 +1791,7 @@ echo "Grafana manual step (after foundation.sh):"
 echo "  Datasource 1: Prometheus @ http://localhost:9090, uid=nizam-prometheus"
 echo "  Datasource 2: Loki @ http://localhost:3100, uid=nizam-loki"
 echo "  Dashboard: docs/grafana/personal-dashboard.json"
-echo "  Dashboard: docs/grafana/business-dashboard.json"
+echo "  (Business dashboard is Phase 8 scope)"
 ```
 
 - [ ] **Step 6: Verify**
@@ -2055,7 +2053,7 @@ cat << 'GRAFANA'
      UID: nizam-loki
    → Save & Test
 4. Dashboards → Import → docs/grafana/personal-dashboard.json
-5. Dashboards → Import → docs/grafana/business-dashboard.json
+   (Business dashboard is Phase 8 scope)
 
 GRAFANA
 
