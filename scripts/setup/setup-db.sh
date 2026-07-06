@@ -23,6 +23,6 @@ SQL
 
 echo "Database setup complete."
 echo ""
-echo "Add to nizam.env:"
+echo "Add to nizam-os.env:"
 echo "  LITELLM_DB_URL=postgresql://svc_litellm:${LITELLM_DB_PASSWORD}@localhost:5432/nizam?schema=litellm"
 echo "  REDIS_URL=redis://localhost:6379/0"

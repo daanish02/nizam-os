@@ -53,7 +53,7 @@ Eight agents across two domains (personal and business). All run as Hermes profi
 | Reem | CTO | Business |
 | Mira | CMO | Business |
 
-> Agent channels, toolsets, MCP access, and command allowlists: `docs/SERVICES.md`.
+> Agent channels, toolsets, MCP access, and command allowlists: [SERVICES](SERVICES.md).
 
 ---
 
@@ -113,7 +113,7 @@ Three systemd timers write `.prom` metric files for LLM spend, service health, a
 - `redact_secrets: true` on all profiles. Hermes scrubs known secret patterns from tool output.
 - `max_spawn_depth: 2` on Reem (the only agent with delegation toolset). Sandbox agents can spawn further agents.
 - No agent connects directly to any external model API. All inference routes through LiteLLM.
-- **Single secrets file:** all secrets live in `secrets/nizam.env`. No per-service `.env` files for MCP services. Per-agent `.env` files (Discord token, LiteLLM virtual key) are the only exception — one per Hermes profile.
+- **Single secrets file:** all secrets live in `secrets/nizam-os.env`. No per-service `.env` files for MCP services. Per-agent `.env` files (Discord token, LiteLLM virtual key) are the only exception — one per Hermes profile.
 - **Minimal config files:** tunables for a service live in one `config.yaml` per service directory. No proliferation of per-component config files. Changing a tunable requires editing one file and restarting the service.
 - **Uniform service logging:** every MCP service logs JSON to `nizam-os/logs/<service-name>.log` via systemd stdout/stderr redirect. Fixed fields: `ts`, `level`, `service`, `module`, `func`, `msg`. All services using `nizam-shared` get this automatically. Rotation handled by `config/logrotate.nizam`.
 

@@ -64,7 +64,7 @@ All internal services bind to `127.0.0.1` only. No service is publicly reachable
 
 ## Secrets
 
-**At rest:** All secrets stored in `secrets/nizam.env`, encrypted with age. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts everything. Plaintext secrets are never committed to git.
+**At rest:** All secrets stored in `secrets/nizam-os.env`, encrypted with age. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts everything. Plaintext secrets are never committed to git.
 
 **In transit:** Agent → LiteLLM → OpenRouter over HTTPS. Agent → MCP services over HTTP on localhost (loopback only — TLS not needed). Grafana → PostgreSQL via local socket.
 
@@ -166,6 +166,6 @@ Reem is the only agent with the `delegation` toolset.
 - [ ] Dedicated PostgreSQL role — no shared roles
 - [ ] Role grants verified: only the schemas/tables the service needs
 - [ ] INSERT-only on `audit.log` — no UPDATE or DELETE
-- [ ] No secrets hardcoded — all via environment variables from `nizam.env`
+- [ ] No secrets hardcoded — all via environment variables from `nizam-os.env`
 - [ ] Service added to [SERVICES](docs/SERVICES.md) and [SCHEMAS](docs/SCHEMAS.md)
-- [ ] systemd unit reads secrets from `secrets/nizam.env`
+- [ ] systemd unit reads secrets from `secrets/nizam-os.env`

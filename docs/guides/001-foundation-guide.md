@@ -26,17 +26,17 @@ Do this on the **old machine** before deleting anything.
 cat ~/nizam-os/secrets/nizam-age-key.txt
 ```
 
-Copy this to a password manager or secure external location. Without it, `nizam.env.enc` cannot be decrypted. This is the only thing that cannot be recovered from git.
+Copy this to a password manager or secure external location. Without it, `nizam-os.env.enc` cannot be decrypted. This is the only thing that cannot be recovered from git.
 
-**1b. Confirm `nizam.env.enc` is committed**
+**1b. Confirm `nizam-os.env.enc` is committed**
 
 ```bash
 cd ~/nizam-os
-git status secrets/nizam.env.enc
+git status secrets/nizam-os.env.enc
 # Expected: nothing (already committed) or "modified" — commit it
 ```
 
-If modified: `git add secrets/nizam.env.enc && git commit -m "secrets: update encrypted env"`.
+If modified: `git add secrets/nizam-os.env.enc && git commit -m "secrets: update encrypted env"`.
 
 **1c. Confirm dashboard JSONs are in `docs/grafana/`**
 
@@ -70,7 +70,7 @@ cd ~/nizam-os
 # Restore the age key you backed up in Step 1a
 nano ~/nizam-os/secrets/nizam-age-key.txt   # paste key content
 
-# foundation.sh will detect nizam.env.enc and decrypt automatically
+# foundation.sh will detect nizam-os.env.enc and decrypt automatically
 ```
 
 **Fresh (new credentials):**
@@ -84,12 +84,12 @@ openssl rand -base64 32   # → LITELLM_DB_PASSWORD
 openssl rand -base64 32   # → REDIS_PASSWORD
 openssl rand -base64 32   # → LITELLM_MASTER_KEY
 
-# Fill nizam.env
-cp ~/nizam-os/secrets/nizam.env.example ~/nizam-os/secrets/nizam.env
-nano ~/nizam-os/secrets/nizam.env
+# Fill nizam-os.env
+cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
+nano ~/nizam-os/secrets/nizam-os.env
 ```
 
-`nizam.env` needs 7 values:
+`nizam-os.env` needs 7 values:
 
 | Variable | Where to get it |
 |----------|----------------|
@@ -121,7 +121,7 @@ Takes 5–10 minutes. The script is idempotent — if it fails partway, fix the 
 7. Runs `db/migrations/001_audit_schema.sql`
 8. Creates `/var/lib/prometheus/node-exporter/` (owned by vazir)
 9. Wires symlinks (`install-symlinks.sh`)
-10. Encrypts `nizam.env` → `nizam.env.enc` if not already done
+10. Encrypts `nizam-os.env` → `nizam-os.env.enc` if not already done
 11. Enables: `watcher-env`, `watcher-inventory.timer`, all metrics timers
 12. Starts `litellm-proxy`, waits for `/health/liveliness`
 13. Waits for Loki `/ready`
@@ -139,7 +139,7 @@ curl -s http://localhost:4000/health/liveliness
 # → {"status":"healthy"}
 
 # Redis
-source ~/nizam-os/secrets/nizam.env && redis-cli -a "$REDIS_PASSWORD" ping
+source ~/nizam-os/secrets/nizam-os.env && redis-cli -a "$REDIS_PASSWORD" ping
 # → PONG
 
 # PostgreSQL — both schemas present
@@ -151,7 +151,7 @@ curl -s http://localhost:3100/ready
 # → ready
 
 # Secrets
-grep -c "=" ~/nizam-os/secrets/nizam.env
+grep -c "=" ~/nizam-os/secrets/nizam-os.env
 # → 7
 
 # Metric files (wait 5 min after timers start)
@@ -195,13 +195,13 @@ Open Grafana at `http://<tailscale-ip>:3000` (default login: admin/admin — cha
 
 ---
 
-## Step 7 — Commit `nizam.env.enc`
+## Step 7 — Commit `nizam-os.env.enc`
 
-If this was a fresh setup (new credentials), foundation.sh created a new `nizam.env.enc`. Commit it:
+If this was a fresh setup (new credentials), foundation.sh created a new `nizam-os.env.enc`. Commit it:
 
 ```bash
 cd ~/nizam-os
-git add secrets/nizam.env.enc secrets/nizam.env.example
+git add secrets/nizam-os.env.enc secrets/nizam-os.env.example
 git commit -m "secrets: initial encrypted env for phase 1"
 git push
 ```
@@ -218,9 +218,9 @@ journalctl -u litellm-proxy -n 50
 
 **Redis auth failure:**
 ```bash
-# Check password matches between nizam.env and /etc/redis/redis.conf
+# Check password matches between nizam-os.env and /etc/redis/redis.conf
 grep requirepass /etc/redis/redis.conf
-grep REDIS_PASSWORD ~/nizam-os/secrets/nizam.env
+grep REDIS_PASSWORD ~/nizam-os/secrets/nizam-os.env
 ```
 
 **Loki not ready:**

@@ -9,7 +9,7 @@
 
 Complete [nizam-dotfiles](~/nizam-dotfiles/docs/startup-guide.md) machine setup before this phase. That repo covers: Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, zsh, Prometheus, Grafana, node-exporter, and dotfiles security metric timers. Phase 1 builds on top of that baseline — it does not repeat it.
 
-One external backup item must exist, if reusing keys, before proceeding: `secrets/nizam-age-key.txt` (the age private key). Without it, `nizam.env.enc` cannot be decrypted. Back this up to a secure external location before any VPS wipe.
+One external backup item must exist, if reusing keys, before proceeding: `secrets/nizam-age-key.txt` (the age private key). Without it, `nizam-os.env.enc` cannot be decrypted. Back this up to a secure external location before any VPS wipe.
 
 ---
 
@@ -23,7 +23,7 @@ The only step that stays manual is Grafana dashboard import — Grafana has no s
 ```bash
 git clone <repo> ~/nizam-os
 cp <backup>/nizam-age-key.txt ~/nizam-os/secrets/nizam-age-key.txt
-# foundation.sh detects the .enc file and decrypts nizam.env automatically
+# foundation.sh detects the .enc file and decrypts nizam-os.env automatically
 sudo bash ~/nizam-os/scripts/setup/foundation.sh
 ```
 
@@ -37,11 +37,11 @@ openssl rand -base64 32   # → LITELLM_DB_PASSWORD
 openssl rand -base64 32   # → REDIS_PASSWORD
 openssl rand -base64 32   # → LITELLM_MASTER_KEY
 
-# Populate nizam.env from template and fill all values
-cp ~/nizam-os/secrets/nizam.env.example ~/nizam-os/secrets/nizam.env
-nano ~/nizam-os/secrets/nizam.env
+# Populate nizam-os.env from template and fill all values
+cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
+nano ~/nizam-os/secrets/nizam-os.env
 sudo bash ~/nizam-os/scripts/setup/foundation.sh
-# foundation.sh detects no .enc and encrypts nizam.env after confirming vars are set
+# foundation.sh detects no .enc and encrypts nizam-os.env after confirming vars are set
 ```
 
 ---
@@ -49,16 +49,16 @@ sudo bash ~/nizam-os/scripts/setup/foundation.sh
 ## Secrets management
 
 **Storage model:**
-- `secrets/nizam.env` — plaintext secrets file. Gitignored. Never committed.
-- `secrets/nizam.env.enc` — age-encrypted. Committed to git.
-- `secrets/nizam.env.example` — keys only, no values. Committed. Updated automatically by `watcher-env.service` on every encrypt.
+- `secrets/nizam-os.env` — plaintext secrets file. Gitignored. Never committed.
+- `secrets/nizam-os.env.enc` — age-encrypted. Committed to git.
+- `secrets/nizam-os.env.example` — keys only, no values. Committed. Updated automatically by `watcher-env.service` on every encrypt.
 - `secrets/nizam-age-key.txt` — age private key. Gitignored. Must be backed up externally.
 
 **Encryption tools:** `sops` + `age`. Manual scripts: `scripts/encrypt-env.sh`, `scripts/decrypt-env.sh`.
 
-**Auto-encrypt watcher:** `watcher-env.service` runs `inotifywait` on `nizam.env`. On every `close_write`, it re-encrypts to `nizam.env.enc` and updates `nizam.env.example`. This ensures the committed ciphertext stays current with any edit without requiring a manual step.
+**Auto-encrypt watcher:** `watcher-env.service` runs `inotifywait` on `nizam-os.env`. On every `close_write`, it re-encrypts to `nizam-os.env.enc` and updates `nizam-os.env.example`. This ensures the committed ciphertext stays current with any edit without requiring a manual step.
 
-**`nizam.env` variables for Phase 1:**
+**`nizam-os.env` variables for Phase 1:**
 
 | Variable | Phase added | Purpose |
 |----------|-------------|---------|
@@ -70,7 +70,7 @@ sudo bash ~/nizam-os/scripts/setup/foundation.sh
 | `REDIS_PASSWORD` | 1 | Redis `requirepass` value |
 | `DISCORD_WEBHOOK_LOGS` | 1* | Webhook URL for inventory diff → `#logs` in Discord. Leave empty in Phase 1; fill in Phase 2 after Discord server is created. |
 
-Phase 2+ vars added later to nizam.env (not Phase 1):
+Phase 2+ vars added later to nizam-os.env (not Phase 1):
 - `DISCORD_GUILD_ID`, per-profile `DISCORD_TOKEN` — Phase 2
 - `DISCORD_WEBHOOK_ALERTS` — Phase 2; Grafana alert contact point → `#alerts` in Discord
 - `POSTGRES_DSN_KNOWLEDGE`, `POSTGRES_DSN_FINANCE_PERSONAL`, etc. — added by each phase's migration when its service role is created
@@ -92,7 +92,7 @@ Both extensions are enabled in the `nizam` database during Phase 1 setup. Future
 
 **Database:** `nizam` — single database for all schemas across all phases.
 
-**Setup script (`setup-db.sh`):** Creates the `nizam` database, `svc_litellm` role, and `litellm` schema placeholder. Prints the `LITELLM_DB_URL` to add to `nizam.env`. Run once during `foundation.sh`.
+**Setup script (`setup-db.sh`):** Creates the `nizam` database, `svc_litellm` role, and `litellm` schema placeholder. Prints the `LITELLM_DB_URL` to add to `nizam-os.env`. Run once during `foundation.sh`.
 
 **Roles created in Phase 1:** `svc_litellm` only. All other service roles (`svc_knowledge`, `svc_finance_personal`, etc.) are created in their respective phase migrations.
 
@@ -128,10 +128,10 @@ Installed via apt. Config file: `config/redis.conf` — committed to repo, copie
 
 Four settings in `config/redis.conf`:
 - `bind 127.0.0.1` — localhost only
-- `requirepass <REDIS_PASSWORD>` — placeholder; `foundation.sh` substitutes the actual value from `nizam.env` using `envsubst` before copying
+- `requirepass <REDIS_PASSWORD>` — placeholder; `foundation.sh` substitutes the actual value from `nizam-os.env` using `envsubst` before copying
 - `maxmemory 256mb` + `maxmemory-policy allkeys-lru` — bounds memory use; evicts least-recently-used keys when full. Safe for a cache workload.
 
-`REDIS_URL` in nizam.env includes the password: `redis://:PASSWORD@localhost:6379/0`.
+`REDIS_URL` in nizam-os.env includes the password: `redis://:PASSWORD@localhost:6379/0`.
 
 **Used by:**
 - LiteLLM exact-match cache (TTL 3600s, configured in `config/litellm.yaml`)
@@ -209,14 +209,14 @@ Two targeted changes are made in Phase 1:
 self.dsn = os.environ["POSTGRES_DSN"]
 ```
 
-**How `POSTGRES_DSN` is set:** All service DSNs live in `nizam.env` under named vars (`POSTGRES_DSN_KNOWLEDGE`, `POSTGRES_DSN_FINANCE_PERSONAL`, etc.). Each service's systemd unit uses a shell wrapper in `ExecStart` to map its named var to the generic `POSTGRES_DSN` that ServiceBase reads:
+**How `POSTGRES_DSN` is set:** All service DSNs live in `nizam-os.env` under named vars (`POSTGRES_DSN_KNOWLEDGE`, `POSTGRES_DSN_FINANCE_PERSONAL`, etc.). Each service's systemd unit uses a shell wrapper in `ExecStart` to map its named var to the generic `POSTGRES_DSN` that ServiceBase reads:
 
 ```ini
-EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
 ExecStart=/bin/sh -c 'POSTGRES_DSN=$POSTGRES_DSN_KNOWLEDGE exec uv run --directory /home/vazir/nizam-os/services/knowledge-service python server.py'
 ```
 
-This means: one `nizam.env`, no per-service `.env` files, no duplication. Each phase's migration adds its service's `POSTGRES_DSN_<SERVICE>=...` to `nizam.env` when it creates the role.
+This means: one `nizam-os.env`, no per-service `.env` files, no duplication. Each phase's migration adds its service's `POSTGRES_DSN_<SERVICE>=...` to `nizam-os.env` when it creates the role.
 
 ServiceBase structure (constructor, `db()` context manager, `cache` Redis client) is otherwise unchanged.
 
@@ -285,7 +285,7 @@ apt-get install -y loki promtail
 | Unit | Type | Purpose |
 |------|------|---------|
 | `litellm-proxy.service` | system, persistent | LiteLLM on `:4000` |
-| `watcher-env.service` | system, persistent | Auto-encrypt `nizam.env` on change |
+| `watcher-env.service` | system, persistent | Auto-encrypt `nizam-os.env` on change |
 | `watcher-inventory.timer` | system, timer (hourly) | Inventory diff → Discord |
 | `metrics-llm.timer` | system, timer (1 min) | Write `nizam-llm.prom` |
 | `metrics-services.timer` | system, timer (5 min) | Write `nizam-services.prom` |
@@ -418,8 +418,8 @@ Same layout as Personal dashboard infrastructure panels, but `profile=~"raha|hal
 # LiteLLM
 curl -s http://localhost:4000/health/liveliness        # → {"status":"healthy"}
 
-# Redis (use actual REDIS_PASSWORD from nizam.env)
-source ~/nizam-os/secrets/nizam.env
+# Redis (use actual REDIS_PASSWORD from nizam-os.env)
+source ~/nizam-os/secrets/nizam-os.env
 redis-cli -a "$REDIS_PASSWORD" ping                    # → PONG
 
 # PostgreSQL schemas
@@ -429,7 +429,7 @@ sudo -u postgres psql nizam -c "\dn"                   # → audit, litellm sche
 curl -s http://localhost:3100/ready                    # → ready
 
 # Secrets
-grep -c "=" ~/nizam-os/secrets/nizam.env               # → 7 vars
+grep -c "=" ~/nizam-os/secrets/nizam-os.env               # → 7 vars
 
 # Metric files (wait 5 min after enabling timers)
 ls /var/lib/prometheus/node-exporter/nizam-*.prom      # → 3 files, recent timestamps

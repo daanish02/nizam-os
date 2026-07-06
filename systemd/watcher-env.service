@@ -1,5 +1,5 @@
 [Unit]
-Description=Watch nizam.env and encrypt on changes
+Description=Watch nizam-os.env and encrypt on changes
 
 [Service]
 Type=simple

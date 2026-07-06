@@ -5,7 +5,7 @@
 set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
-NIZAM_ENV="$NIZAM_OS/secrets/nizam.env"
+NIZAM_ENV="$NIZAM_OS/secrets/nizam-os.env"
 PROFILES_DIR="$NIZAM_OS/hermes/profiles"
 LITELLM_URL="http://localhost:4000"
 

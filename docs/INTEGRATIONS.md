@@ -10,7 +10,7 @@ Every external service or dependency the system connects to: what it is, why it'
 
 **Why:** Single endpoint for 100+ model providers. Switching models means changing a config value — no code changes. Spend tracking at the proxy level.
 
-**Auth:** `OPENROUTER_API_KEY` in `secrets/nizam.env`. Each agent uses a LiteLLM virtual key derived from this.
+**Auth:** `OPENROUTER_API_KEY` in `secrets/nizam-os.env`. Each agent uses a LiteLLM virtual key derived from this.
 
 **Models in use:**
 
@@ -47,7 +47,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Why:** Used only when `youtube-transcript-api` (Tier 1) and `yt-dlp` (Tier 2) both fail.
 
-**Auth:** `YOUTUBE_API_KEY` in `nizam.env`.
+**Auth:** `YOUTUBE_API_KEY` in `nizam-os.env`.
 
 **Rate limits:** 10,000 units/day (free tier). Transcript caption download ≈ 50 units. Not a realistic constraint at personal usage volumes.
 
@@ -61,7 +61,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Why:** Handles transcripts when `youtube-transcript-api` is blocked by YouTube.
 
-**Auth:** Optional `YOUTUBE_COOKIES_FILE` in `nizam.env` — path to a `cookies.txt` from a logged-in browser session. Required if yt-dlp hits sign-in errors or 429s.
+**Auth:** Optional `YOUTUBE_COOKIES_FILE` in `nizam-os.env` — path to a `cookies.txt` from a logged-in browser session. Required if yt-dlp hits sign-in errors or 429s.
 
 **Failure mode:** Falls through to Tier 3 (YouTube Data API). No crash.
 
@@ -73,7 +73,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Provider:** `api.exchangerate-api.com` (free tier).
 
-**Auth:** `FX_API_KEY` in `nizam.env`.
+**Auth:** `FX_API_KEY` in `nizam-os.env`.
 
 **Rate limits:** 1,500 requests/month (free tier). Sufficient for daily personal finance at one lookup per report run.
 
@@ -89,7 +89,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Provider:** TBD at build time (metals-api.com or equivalent free tier).
 
-**Auth:** `GOLD_API_KEY` in `nizam.env`.
+**Auth:** `GOLD_API_KEY` in `nizam-os.env`.
 
 **Usage:** Fetched only at zakat calculation time — not polled continuously.
 
@@ -101,7 +101,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **What:** Read access to the nizam-os repo. Reem uses the official GitHub MCP server to review PRs, list issues, and read commits. Limited write access for PR operations.
 
-**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile — not in shared `nizam.env`).
+**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile — not in shared `nizam-os.env`).
 
 **Required PAT scopes:** Contents read, Pull requests read+write, Issues read, Metadata read. No admin scope. No delete, no repo creation, no webhook management.
 
@@ -145,9 +145,9 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Why:** When an agent behaves unexpectedly, Langfuse lets you inspect the exact prompt and response at each step. Not needed in normal operation — enabled only during active debugging or tracing sessions.
 
-**How it's toggled:** Langfuse integration is controlled via an environment variable in `nizam.env`. When `LANGFUSE_ENABLED=true`, LiteLLM sends traces to the Langfuse instance. When absent or `false`, no tracing overhead. Hermes also supports Langfuse natively as a plugin — can be configured per-profile for targeted agent tracing.
+**How it's toggled:** Langfuse integration is controlled via an environment variable in `nizam-os.env`. When `LANGFUSE_ENABLED=true`, LiteLLM sends traces to the Langfuse instance. When absent or `false`, no tracing overhead. Hermes also supports Langfuse natively as a plugin — can be configured per-profile for targeted agent tracing.
 
-**Auth:** `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST` in `nizam.env`. Host points to the self-hosted instance (localhost or Tailscale IP).
+**Auth:** `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST` in `nizam-os.env`. Host points to the self-hosted instance (localhost or Tailscale IP).
 
 **Bind:** `127.0.0.1` only. Accessible via Tailscale for browser UI.
 
@@ -171,6 +171,6 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **What:** Dashboards over Prometheus metrics and PostgreSQL audit data.
 
-**Auth:** Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only). Credentials set in Grafana UI, not in `nizam.env`.
+**Auth:** Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only). Credentials set in Grafana UI, not in `nizam-os.env`.
 
 **Failure mode:** If Grafana is down, dashboards are unavailable. No operational impact on agents or services.

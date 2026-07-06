@@ -66,7 +66,7 @@ echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
 
 log_info "inventory changed"
 
-ENV_FILE="$NIZAM_OS/secrets/nizam.env"
+ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 if [ -f "$ENV_FILE" ]; then
     # shellcheck source=/dev/null
     source "$ENV_FILE"

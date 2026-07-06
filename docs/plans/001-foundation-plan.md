@@ -4,7 +4,7 @@
 
 **Goal:** Build the infrastructure layer (PostgreSQL, Redis, LiteLLM, audit schema, nizam-shared refactor, systemd units, observability) that all future phases run on, delivered as one idempotent `scripts/setup/foundation.sh`.
 
-**Architecture:** A single shell script (`foundation.sh`) installs packages, configures services, runs migrations, and wires systemd units — detecting fresh vs rebuild automatically from presence of `secrets/nizam.env.enc`. All secrets live in `secrets/nizam.env` (age-encrypted at rest via sops). The nizam-shared library is refactored so all MCP services share the same `POSTGRES_DSN` connection pattern via per-service systemd ExecStart wrappers.
+**Architecture:** A single shell script (`foundation.sh`) installs packages, configures services, runs migrations, and wires systemd units — detecting fresh vs rebuild automatically from presence of `secrets/nizam-os.env.enc`. All secrets live in `secrets/nizam-os.env` (age-encrypted at rest via sops). The nizam-shared library is refactored so all MCP services share the same `POSTGRES_DSN` connection pattern via per-service systemd ExecStart wrappers.
 
 **Tech Stack:** Ubuntu 24.04, PostgreSQL 16 + pgvector + ParadeDB, Redis 7, LiteLLM (uv tool), sops + age, Python 3.12+, uv, systemd, Prometheus node-exporter textfile collector.
 
@@ -21,7 +21,7 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 - User: `vazir`. All nizam-os services run as `vazir`.
 - All internal services bind `127.0.0.1` only.
 - All service logs → `~/nizam-os/logs/<service-name>.log` via systemd `StandardOutput=append:`.
-- Single secrets file: `secrets/nizam.env`. No per-service `.env` for MCP services.
+- Single secrets file: `secrets/nizam-os.env`. No per-service `.env` for MCP services.
 - Python 3.12+. All Python tooling via `uv`.
 - PostgreSQL 16 (Ubuntu 24.04 default apt).
 - All paths in this plan are relative to `~/nizam-os/` unless stated.
@@ -35,9 +35,9 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 | File | Purpose |
 |------|---------|
 | `scripts/_log.sh` | Shared bash logging helper (sourced by other scripts) |
-| `scripts/encrypt-env.sh` | Manual: nizam.env → nizam.env.enc |
-| `scripts/decrypt-env.sh` | Manual: nizam.env.enc → nizam.env |
-| `scripts/watch-env.sh` | Long-running: auto-encrypt on nizam.env close_write |
+| `scripts/encrypt-env.sh` | Manual: nizam-os.env → nizam-os.env.enc |
+| `scripts/decrypt-env.sh` | Manual: nizam-os.env.enc → nizam-os.env |
+| `scripts/watch-env.sh` | Long-running: auto-encrypt on nizam-os.env close_write |
 | `scripts/generate-software-inventory.sh` | Print apt packages + local bins |
 | `scripts/generate-services-inventory.sh` | Print tracked service statuses |
 | `scripts/watch-inventory.sh` | Diff inventory hourly, notify via webhook |
@@ -48,8 +48,8 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 | `scripts/setup/install-symlinks.sh` | Wire repo files → system locations |
 | `scripts/setup/foundation.sh` | **Main entry point** — idempotent Phase 1 setup |
 | `db/migrations/001_audit_schema.sql` | Create audit schema + audit.log table |
-| `secrets/nizam.env.example` | Keys-only template (no values) — committed to git |
-| `secrets/.gitignore` | Gitignore nizam.env and nizam-age-key.txt |
+| `secrets/nizam-os.env.example` | Keys-only template (no values) — committed to git |
+| `secrets/.gitignore` | Gitignore nizam-os.env and nizam-age-key.txt |
 | `inventory/tracked-services.txt` | Services monitored by watcher-inventory |
 | `config/litellm.yaml` | LiteLLM proxy config |
 | `config/redis.conf` | Redis config (bind, requirepass placeholder, maxmemory) |
@@ -81,22 +81,22 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 
 **Files:**
 - Create: `secrets/.gitignore`
-- Create: `secrets/nizam.env.example`
+- Create: `secrets/nizam-os.env.example`
 - Create dirs: `logs/`, `db/migrations/`, `inventory/`
 
 - [ ] **Step 1: Create secrets/.gitignore**
 
 ```
-nizam.env
+nizam-os.env
 nizam-age-key.txt
 ```
 
-- [ ] **Step 2: Create secrets/nizam.env.example**
+- [ ] **Step 2: Create secrets/nizam-os.env.example**
 
 This is the committed keys-only template. The `watcher-env.service` regenerates this on every encrypt, but include it in the plan so the fresh clone has it before any secrets exist.
 
 ```bash
-# Phase 1 variables — fill all values in nizam.env (never commit nizam.env)
+# Phase 1 variables — fill all values in nizam-os.env (never commit nizam-os.env)
 OPENROUTER_API_KEY=
 LITELLM_MASTER_KEY=
 LITELLM_DB_PASSWORD=
@@ -110,7 +110,7 @@ DISCORD_WEBHOOK_LOGS=
 
 - [ ] **Step 3: Generate passwords + create required directories**
 
-Generate strong passwords for the three secret values that need them (run before filling nizam.env):
+Generate strong passwords for the three secret values that need them (run before filling nizam-os.env):
 
 ```bash
 openssl rand -base64 32   # → LITELLM_DB_PASSWORD  (svc_litellm PostgreSQL role)
@@ -127,7 +127,7 @@ touch logs/.gitkeep inventory/.gitkeep docs/grafana/.gitkeep
 Add to root `.gitignore` if not already present:
 ```
 logs/*.log
-secrets/nizam.env
+secrets/nizam-os.env
 secrets/nizam-age-key.txt
 inventory/software.txt
 inventory/services.txt
@@ -138,9 +138,9 @@ inventory/last.diff
 - [ ] **Step 4: Verify**
 
 ```bash
-ls secrets/.gitignore secrets/nizam.env.example
+ls secrets/.gitignore secrets/nizam-os.env.example
 # Expected: both files exist
-cat secrets/nizam.env.example
+cat secrets/nizam-os.env.example
 # Expected: 7 KEY= lines, no values
 ```
 
@@ -190,9 +190,9 @@ log_error() { _nizam_log "ERROR" "$@"; }
 
 ```bash
 #!/usr/bin/env bash
-# Encrypt nizam.env → nizam.env.enc using sops + age.
+# Encrypt nizam-os.env → nizam-os.env.enc using sops + age.
 # Run manually: bash scripts/encrypt-env.sh
-# Also called by watcher-env.service on every nizam.env save.
+# Also called by watcher-env.service on every nizam-os.env save.
 set -euo pipefail
 
 export SOPS_AGE_KEY_FILE="$HOME/nizam-os/secrets/nizam-age-key.txt"
@@ -204,15 +204,15 @@ sops \
   --input-type dotenv \
   --output-type dotenv \
   --age "$PUBKEY" \
-  "$HOME/nizam-os/secrets/nizam.env" \
-  > "$HOME/nizam-os/secrets/nizam.env.enc"
+  "$HOME/nizam-os/secrets/nizam-os.env" \
+  > "$HOME/nizam-os/secrets/nizam-os.env.enc"
 ```
 
 - [ ] **Step 3: Create scripts/decrypt-env.sh**
 
 ```bash
 #!/usr/bin/env bash
-# Decrypt nizam.env.enc → nizam.env using sops + age.
+# Decrypt nizam-os.env.enc → nizam-os.env using sops + age.
 # Run manually after git clone or when .enc is updated.
 set -euo pipefail
 
@@ -222,17 +222,17 @@ sops \
   --decrypt \
   --input-type dotenv \
   --output-type dotenv \
-  "$HOME/nizam-os/secrets/nizam.env.enc" \
-  > "$HOME/nizam-os/secrets/nizam.env"
+  "$HOME/nizam-os/secrets/nizam-os.env.enc" \
+  > "$HOME/nizam-os/secrets/nizam-os.env"
 ```
 
 - [ ] **Step 4: Create scripts/watch-env.sh**
 
-Runs as a long-lived service. On every save of `nizam.env`, re-encrypts and regenerates `.env.example`.
+Runs as a long-lived service. On every save of `nizam-os.env`, re-encrypts and regenerates `.env.example`.
 
 ```bash
 #!/usr/bin/env bash
-# Watch nizam.env and auto-encrypt + update .env.example on every save.
+# Watch nizam-os.env and auto-encrypt + update .env.example on every save.
 # Runs as watcher-env.service (persistent via inotifywait).
 set -euo pipefail
 
@@ -240,8 +240,8 @@ NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="watch-env"
 source "$NIZAM_OS/scripts/_log.sh"
 
-ENV_FILE="$NIZAM_OS/secrets/nizam.env"
-EXAMPLE_FILE="$NIZAM_OS/secrets/nizam.env.example"
+ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
+EXAMPLE_FILE="$NIZAM_OS/secrets/nizam-os.env.example"
 
 update_example() {
     grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" \
@@ -252,7 +252,7 @@ update_example() {
 log_info "watching $ENV_FILE"
 
 while inotifywait -e close_write "$ENV_FILE"; do
-    log_info "encrypting nizam.env"
+    log_info "encrypting nizam-os.env"
     "$NIZAM_OS/scripts/encrypt-env.sh"
     log_info "updating .env.example"
     update_example
@@ -263,7 +263,7 @@ done
 
 ```ini
 [Unit]
-Description=Watch nizam.env and encrypt on changes
+Description=Watch nizam-os.env and encrypt on changes
 
 [Service]
 Type=simple
@@ -298,7 +298,7 @@ bash -n scripts/watch-env.sh && echo "watch-env.sh: OK"
 
 - [ ] **Step 1: Create scripts/setup/setup-db.sh**
 
-Idempotent — safe to re-run. Creates the `nizam` database, `svc_litellm` role, and `litellm` schema. Requires `LITELLM_DB_PASSWORD` in environment (sourced from `nizam.env` by `foundation.sh`).
+Idempotent — safe to re-run. Creates the `nizam` database, `svc_litellm` role, and `litellm` schema. Requires `LITELLM_DB_PASSWORD` in environment (sourced from `nizam-os.env` by `foundation.sh`).
 
 ```bash
 #!/usr/bin/env bash
@@ -343,7 +343,7 @@ SQL
 echo ""
 echo "Database setup complete."
 echo ""
-echo "Verify LITELLM_DB_URL in nizam.env:"
+echo "Verify LITELLM_DB_URL in nizam-os.env:"
 echo "  LITELLM_DB_URL=postgresql://svc_litellm:PASSWORD@localhost:5432/nizam?schema=litellm"
 ```
 
@@ -634,7 +634,7 @@ Type=simple
 User=vazir
 Group=vazir
 WorkingDirectory=/home/vazir/nizam-os
-EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
 ExecStart=/home/vazir/.local/bin/litellm \
     --config /home/vazir/nizam-os/config/litellm.yaml \
     --port 4000 \
@@ -795,7 +795,7 @@ echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
 
 log_info "inventory changed"
 
-ENV_FILE="$NIZAM_OS/secrets/nizam.env"
+ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 if [ -f "$ENV_FILE" ]; then
     # shellcheck source=/dev/null
     set -a; source "$ENV_FILE"; set +a
@@ -1284,7 +1284,7 @@ Description=Write LLM spend metrics to Prometheus node-exporter textfile
 [Service]
 Type=oneshot
 User=vazir
-EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
 ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-llm.py
 StandardOutput=append:/home/vazir/nizam-os/logs/metrics-llm.log
 StandardError=append:/home/vazir/nizam-os/logs/metrics-llm.log
@@ -1760,7 +1760,7 @@ if [ -n "${REDIS_PASSWORD:-}" ]; then
     chmod 640 /etc/redis/redis.conf
     echo "  redis.conf written"
 else
-    echo "  WARNING: REDIS_PASSWORD not set — redis.conf not written. Source nizam.env first."
+    echo "  WARNING: REDIS_PASSWORD not set — redis.conf not written. Source nizam-os.env first."
 fi
 
 systemctl daemon-reload
@@ -1830,8 +1830,8 @@ This is the single command that builds Phase 1 from a fresh Ubuntu 24.04 machine
 # Fresh (new creds):
 #   git clone <repo> ~/nizam-os
 #   age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
-#   cp ~/nizam-os/secrets/nizam.env.example ~/nizam-os/secrets/nizam.env
-#   nano ~/nizam-os/secrets/nizam.env   # fill all 7 values
+#   cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
+#   nano ~/nizam-os/secrets/nizam-os.env   # fill all 7 values
 #   sudo bash ~/nizam-os/scripts/setup/foundation.sh
 set -euo pipefail
 
@@ -1860,19 +1860,19 @@ fi
 log_info "=== Phase 1 foundation setup ==="
 
 # Step 1: Secrets — detect fresh vs rebuild
-ENC="$NIZAM_OS/secrets/nizam.env.enc"
-ENV="$NIZAM_OS/secrets/nizam.env"
+ENC="$NIZAM_OS/secrets/nizam-os.env.enc"
+ENV="$NIZAM_OS/secrets/nizam-os.env"
 AGE_KEY="$NIZAM_OS/secrets/nizam-age-key.txt"
 
 if [ -f "$ENC" ] && [ -f "$AGE_KEY" ]; then
-    log_info "Detected encrypted secrets — decrypting nizam.env"
+    log_info "Detected encrypted secrets — decrypting nizam-os.env"
     sudo -u vazir bash "$NIZAM_OS/scripts/decrypt-env.sh"
 elif [ -f "$ENV" ]; then
-    log_info "Using existing nizam.env (fresh setup path)"
+    log_info "Using existing nizam-os.env (fresh setup path)"
 else
     log_error "No secrets found."
-    log_error "Rebuild: restore nizam-age-key.txt + nizam.env.enc"
-    log_error "Fresh:   copy nizam.env.example → nizam.env and fill values"
+    log_error "Rebuild: restore nizam-age-key.txt + nizam-os.env.enc"
+    log_error "Fresh:   copy nizam-os.env.example → nizam-os.env and fill values"
     exit 1
 fi
 
@@ -1885,12 +1885,12 @@ for var in "${required_vars[@]}"; do
 done
 
 if [ ${#missing[@]} -gt 0 ]; then
-    log_error "Missing values in nizam.env: ${missing[*]}"
+    log_error "Missing values in nizam-os.env: ${missing[*]}"
     log_error "Fill them in and re-run."
     exit 1
 fi
 
-# Export all vars from nizam.env for this script's use
+# Export all vars from nizam-os.env for this script's use
 set -a
 # shellcheck source=/dev/null
 source "$ENV"
@@ -1986,11 +1986,11 @@ chown vazir:vazir /var/lib/prometheus/node-exporter
 log_info "Installing symlinks and config files"
 bash "$NIZAM_OS/scripts/setup/install-symlinks.sh"
 
-# Step 12: Encrypt nizam.env if not already encrypted
+# Step 12: Encrypt nizam-os.env if not already encrypted
 if [ ! -f "$ENC" ]; then
-    log_info "Encrypting nizam.env → nizam.env.enc"
+    log_info "Encrypting nizam-os.env → nizam-os.env.enc"
     sudo -u vazir bash "$NIZAM_OS/scripts/encrypt-env.sh"
-    log_info "nizam.env.enc created — commit this file"
+    log_info "nizam-os.env.enc created — commit this file"
 fi
 
 # Step 13: Enable and start Phase 1 units
@@ -2042,7 +2042,7 @@ log_info "Phase 1 foundation complete"
 cat << 'GRAFANA'
 
 ╔══════════════════════════════════════════════╗
-║        MANUAL STEP: Grafana setup           ║
+║          MANUAL STEP: Grafana setup          ║
 ╚══════════════════════════════════════════════╝
 
 1. Open Grafana: http://<tailscale-ip>:3000
@@ -2062,7 +2062,7 @@ GRAFANA
 cat << 'EXIT'
 
 ╔══════════════════════════════════════════════╗
-║        Exit criteria — run to verify        ║
+║         Exit criteria — run to verify        ║
 ╚══════════════════════════════════════════════╝
 
 # LiteLLM
@@ -2070,7 +2070,7 @@ curl -s http://localhost:4000/health/liveliness
 # → {"status":"healthy"}
 
 # Redis (substitute actual password)
-source ~/nizam-os/secrets/nizam.env && redis-cli -a "$REDIS_PASSWORD" ping
+source ~/nizam-os/secrets/nizam-os.env && redis-cli -a "$REDIS_PASSWORD" ping
 # → PONG
 
 # PostgreSQL schemas
@@ -2082,7 +2082,7 @@ curl -s http://localhost:3100/ready
 # → ready
 
 # Secrets file vars
-grep -c "=" ~/nizam-os/secrets/nizam.env
+grep -c "=" ~/nizam-os/secrets/nizam-os.env
 # → 7
 
 # Metric files (wait 5 min after timer enable)
@@ -2116,7 +2116,7 @@ bash -n scripts/setup/foundation.sh && echo "foundation.sh: OK"
 |-------------|-----------|
 | Delivery model (fresh vs rebuild) + password gen | Task 9: foundation.sh; Task 1: Step 3 |
 | Secrets (sops+age, watcher, example) | Tasks 1, 2 |
-| nizam.env Phase 1 vars (7 vars, DISCORD_WEBHOOK_LOGS) | Task 1: nizam.env.example |
+| nizam-os.env Phase 1 vars (7 vars, DISCORD_WEBHOOK_LOGS) | Task 1: nizam-os.env.example |
 | PostgreSQL 16 + pgvector + pg_search | Task 9: Steps 3, 4, 8 |
 | setup-db.sh idempotent | Task 3 |
 | 001_audit_schema.sql | Task 3 |
@@ -2148,7 +2148,7 @@ ExecStart=/bin/sh -c 'POSTGRES_DSN=$POSTGRES_DSN_KNOWLEDGE exec uv run ...'
 ```
 This wrapper is NOT included here — it belongs in each service's own phase plan (Phase 4 for knowledge-service, Phase 5 for finance/personal-service). Phase 1 has no MCP services active.
 
-**metrics-toolcalls.service** no longer has `EnvironmentFile` — it parses log files and needs no env vars from `nizam.env`. Removed.
+**metrics-toolcalls.service** no longer has `EnvironmentFile` — it parses log files and needs no env vars from `nizam-os.env`. Removed.
 
 **tracked-services.txt** excludes `hermes-profile-watcher.service` and all `hermes-gateway-*` units — those are Phase 2.
 

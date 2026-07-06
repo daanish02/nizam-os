@@ -18,7 +18,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - Prometheus + node-exporter
 - Loki + Promtail (log aggregation)
 - Grafana (Personal dashboard + Business dashboard skeleton)
-- age encryption setup; `secrets/nizam.env` populated
+- age encryption setup; `secrets/nizam-os.env` populated
 - `audit` schema migration run
 
 **Exit criteria:** LiteLLM proxy reachable at `localhost:4000`. PostgreSQL running with `nizam` database and `audit.log` table. Grafana loading at `localhost:3000`. 
@@ -32,7 +32,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 **Includes:**
 - Hermes installed
 - Discord server created: categories, channels, one bot application per agent, tokens in place
-- `DISCORD_GUILD_ID` and all `DISCORD_TOKEN` vars populated in `nizam.env`
+- `DISCORD_GUILD_ID` and all `DISCORD_TOKEN` vars populated in `nizam-os.env`
 - `allow_lazy_installs: false` on all profiles
 - Models pinned on all profiles
 - `DISCORD_ALLOWED_USERS` set on all profiles

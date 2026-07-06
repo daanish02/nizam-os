@@ -9,7 +9,7 @@ when a new skill lands in the approval queue. Logs proposed/approved/rejected to
 each profile's skills/.audit.json.
 
 Requires:
-  DISCORD_ADMIN_WEBHOOK — set in secrets/nizam.env (loaded by systemd EnvironmentFile)
+  DISCORD_ADMIN_WEBHOOK — set in secrets/nizam-os.env (loaded by systemd EnvironmentFile)
 
 State files (survive restarts):
   ~/.hermes/pending/.skill_notified     — set of already-notified pending keys

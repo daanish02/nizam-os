@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Encrypt nizam.env → nizam.env.enc using the age public key.
+# Encrypt nizam-os.env → nizam-os.env.enc using the age public key.
 # Run manually before committing secrets changes.
 set -euo pipefail
 
@@ -12,5 +12,5 @@ sops \
   --input-type dotenv \
   --output-type dotenv \
   --age "$PUBKEY" \
-  "$HOME/nizam-os/secrets/nizam.env" \
-  > "$HOME/nizam-os/secrets/nizam.env.enc"
+  "$HOME/nizam-os/secrets/nizam-os.env" \
+  > "$HOME/nizam-os/secrets/nizam-os.env.enc"
