@@ -28,7 +28,7 @@ Not a product. Not multi-tenant. Not for distribution.
 
 The system supports business operations at the same level of friction reduction as personal: CRM tracking, financial oversight, developer tooling, content creation, marketing, research, and strategic review. Business agents operate on the same infrastructure as personal agents. 
 
-> Detail: [ROADMAP](docs/ROADMAP.md) → Phases 6a–6e.
+> Detail: [ROADMAP](docs/ROADMAP.md).
 
 **Infrastructure:**
 

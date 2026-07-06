@@ -19,7 +19,7 @@ Every external service or dependency the system connects to: what it is, why it'
 | `deepseek/deepseek-v4-flash` | All agent inference (primary) |
 | `deepseek/deepseek-v4-flash` | Context compression |
 | `google/gemini-embedding-2` | Vault note embeddings |
-| `google/gemini-2.0-flash` | Vision (image ingestion) |
+| `google/gemini-2.5-flash-lite` | Vision (image ingestion) |
 
 **Rate limits:** Pay-as-you-go. No hard request limit — constrained only by credit balance. Monitored via Grafana spend dashboard.
 
@@ -37,7 +37,19 @@ Every external service or dependency the system connects to: what it is, why it'
 
 **Failure mode:** If Discord is down, no interaction with agents is possible. Agents continue running but cannot receive or send messages.
 
-Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
+> Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
+
+---
+
+## yt-dlp
+
+**What:** Local CLI tool. Second fallback (Tier 2) for YouTube transcript download via VTT subtitles.
+
+**Why:** Handles transcripts when `youtube-transcript-api` is blocked by YouTube.
+
+**Auth:** `YOUTUBE_COOKIES_FILE` in `nizam-os.env` — path to a `cookies.txt` from a logged-in browser session. Required if yt-dlp hits sign-in errors or 429s.
+
+**Failure mode:** Falls through to Tier 3 (YouTube Data API). No crash.
 
 ---
 
@@ -51,19 +63,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Rate limits:** 10,000 units/day (free tier). Transcript caption download ≈ 50 units. Not a realistic constraint at personal usage volumes.
 
-**Failure mode:** If unavailable or quota exhausted, falls back to video description metadata with confidence downgraded to `"low"`. Noor is notified via tool response.
-
----
-
-## yt-dlp
-
-**What:** Local CLI tool. Second fallback (Tier 2) for YouTube transcript download via VTT subtitles.
-
-**Why:** Handles transcripts when `youtube-transcript-api` is blocked by YouTube.
-
-**Auth:** Optional `YOUTUBE_COOKIES_FILE` in `nizam-os.env` — path to a `cookies.txt` from a logged-in browser session. Required if yt-dlp hits sign-in errors or 429s.
-
-**Failure mode:** Falls through to Tier 3 (YouTube Data API). No crash.
+**Failure mode:** If unavailable or quota exhausted, falls back to video description metadata with confidence downgraded to `"low"`. Curator is notified via tool response.
 
 ---
 
@@ -77,9 +77,9 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **Rate limits:** 1,500 requests/month (free tier). Sufficient for daily personal finance at one lookup per report run.
 
-**Caching:** finance-service caches the rate for a configurable TTL to avoid burning quota. Detail: `docs/specs/`.
+**Caching:** `finance-service` caches the rate for a configurable TTL to avoid burning quota. Detail: `docs/specs/`.
 
-**Failure mode:** If unavailable, `finance-service` surfaces the error. Ayah asks the owner to supply the rate manually. Transaction logging is not blocked.
+**Failure mode:** If unavailable, `finance-service` surfaces the error. Assistant asks the owner to supply the rate manually. Transaction logging is not blocked.
 
 ---
 
@@ -87,27 +87,47 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 **What:** Current gold price in USD/gram for zakat nisab calculation.
 
-**Provider:** TBD at build time (metals-api.com or equivalent free tier).
+**Provider:** `metals-api.com` (free tier)
 
 **Auth:** `GOLD_API_KEY` in `nizam-os.env`.
 
 **Usage:** Fetched only at zakat calculation time — not polled continuously.
 
+**Caching:** `finance-service` caches the rate for a configurable TTL to avoid burning quota. Detail: `docs/specs/`.
+
 **Failure mode:** If unavailable, `calculate_zakat` returns an error. Ayah asks the owner to supply the gold price manually.
 
 ---
 
-## GitHub (Reem only)
+## Interactive Brokers
 
-**What:** Read access to the nizam-os repo. Reem uses the official GitHub MCP server to review PRs, list issues, and read commits. Limited write access for PR operations.
+**What:** Read-only access to the owner's IBKR account. Investor reads watchlist, positions, prices, and financial statement data to drive due diligence workflows.
 
-**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env` (per-profile — not in shared `nizam-os.env`).
+**Why:** IBKR Client Portal API is free for account holders. Avoids manual copy-paste of watchlist and position data into Discord.
+
+**Auth:** `IBKR_ACCOUNT_ID` and session credentials in `hermes/profiles/investor/.env` (per-profile — not in shared `nizam-os.env`). IBKR Client Portal API uses session-based auth (OAuth2 with a locally running gateway process). Auth mechanism confirmed at build time.
+
+**Current scope:** Read-only — positions, watchlist, prices, financials. No order placement.
+
+**Failure mode:** If IBKR gateway is down, `investment-service` returns an error. Investor surfaces this to the owner and requests manual data input. Due diligence workflow continues with manually supplied data.
+
+> IBKR API scope and tool definitions: [SPECS](docs/specs/).
+
+---
+
+## GitHub
+
+**What:** Read access to the nizam-os repo. CTO uses the official GitHub MCP server to review PRs, list issues, and read commits. Limited write access for PR operations.
+
+**Auth:** `GITHUB_PAT` in `hermes/profiles/cto/.env`.
 
 **Required PAT scopes:** Contents read, Pull requests read+write, Issues read, Metadata read. No admin scope. No delete, no repo creation, no webhook management.
 
-**Runtime:** `npx -y @modelcontextprotocol/server-github` pulled from npm at Hermes session start. Requires Node.js on VPS. This is a supply chain trust surface — pin the version when Reem is built. Detail: [SECURITY](docs/SECURITY.md) → Supply chain.
+**Runtime:** `npx -y @modelcontextprotocol/server-github` pulled from npm at Hermes session start. Requires Node.js on VPS. This is a supply chain trust surface — pin the version when cto is built. 
 
-**Failure mode:** If npm is unavailable at session start, Reem's GitHub MCP fails to load. Reem continues to function without GitHub tools.
+**Failure mode:** If npm is unavailable at session start, cto's GitHub MCP fails to load. CTO continues to function without GitHub tools.
+
+> Detail: [SECURITY](docs/SECURITY.md) → Supply chain.
 
 ---
 
@@ -123,11 +143,11 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 ---
 
-## LiteLLM Proxy (internal)
+## LiteLLM Proxy 
 
 **What:** Local model proxy on `localhost:4000`. The single chokepoint between agents and any external model provider.
 
-**Why:** Centralizes spend tracking, Redis caching (exact-match and future semantic), per-agent virtual keys, token counting, and rate limits. Switching model providers requires only a config change — no agent or service code changes.
+**Why:** Centralizes spend tracking, Redis caching (exact-match and semantic), per-agent virtual keys, token counting, and rate limits. Switching model providers requires only a config change — no agent or service code changes.
 
 **Auth:** Each Hermes agent profile carries a LiteLLM virtual key (derived from the master `OPENROUTER_API_KEY`). Agents connect to `http://localhost:4000` — they never see the OpenRouter key directly.
 
@@ -139,7 +159,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 ---
 
-## Langfuse (internal, on-demand)
+## Langfuse
 
 **What:** Self-hosted LLM observability platform. Traces agent LLM calls — prompt, response, token counts, latency, model, cost — for debugging and evaluation.
 
@@ -155,7 +175,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 ---
 
-## Prometheus + node-exporter (internal)
+## Prometheus + node-exporter
 
 **What:** Metrics collection for observability. Not external but has an integration surface.
 
@@ -167,7 +187,7 @@ Server structure, channel map, bot setup, and intents: [SPECS](docs/specs/).
 
 ---
 
-## Grafana (internal)
+## Grafana
 
 **What:** Dashboards over Prometheus metrics and PostgreSQL audit data.
 

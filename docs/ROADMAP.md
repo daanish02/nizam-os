@@ -2,7 +2,7 @@
 
 Build order and exit criteria by phase. No dates — phases are sequenced by dependency, not calendar.
 
-**Principle:** Personal agents before business agents. Within personal, Nazim is critical infrastructure — he maintains all other services. Nail Nazim before Noor and Ayah; failures in Noor and Ayah are recoverable, failures in Nazim take down everyone. Business agents build on lessons from all three personal agents.
+**Principle:** Personal agents before business agents. Within personal, admin is critical infrastructure — he maintains all other services. Nail admin before curator and assistant; failures in curator and assistant are recoverable, failures in admin take down everyone. Business agents build on lessons from all previous agents.
 
 ---
 
@@ -16,7 +16,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - Redis
 - LiteLLM proxy with OpenRouter
 - Prometheus + node-exporter
-- Loki + Promtail (log aggregation)
+- Loki + Promtail
 - Grafana (Personal dashboard + Business dashboard skeleton)
 - age encryption setup; `secrets/nizam-os.env` populated
 - `audit` schema migration run
@@ -38,7 +38,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `DISCORD_ALLOWED_USERS` set on all profiles
 - `discord.allowed_channels` set on all profiles
 - LiteLLM Prisma migration run (spend tracking active)
-- `/etc/sudoers.d/nazim-nizam` created
+- `/etc/sudoers.d/admin-nizam` created
 - Metrics timers wired up (LLM spend, service health, tool call counts)
 
 **Exit criteria:** Discord server exists with all channels and all bot tokens available. Hermes can connect to Discord. All Hermes profile configs pass the security checklist in [SECURITY](docs/SECURITY.md). Spend tracking recording in LiteLLM DB.
@@ -47,15 +47,15 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 
 ## Phase 3 — Nazim (system admin)
 
-**What:** System monitoring and self-healing live.
+**What:** System monitoring, self-healing and Hermes help live.
 
 **Includes:**
-- Nazim's Hermes profile active in Discord
-- Nazim can restart all defined services via `command_allowlist`
+- Admin's Hermes profile active in Discord
+- Admin can restart all defined services via `command_allowlist`
 - Incident reporting to Discord verified
 - Metrics dashboards showing service health
 
-**Exit criteria:** Nazim detects a service failure, restarts it, and posts an incident report in Discord without owner intervention.
+**Exit criteria:** Admin detects a service failure, restarts it, and posts an incident report in Discord without owner intervention.
 
 ---
 
@@ -67,11 +67,11 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `knowledge` schema migration
 - `knowledge-service` running as systemd unit
 - Vault directory created (`~/nizam-vault/commons/`)
-- Noor's Hermes profile active in Discord
+- Curator's Hermes profile active in Discord
 - Ingestion from URL, YouTube, PDF, image working
 - Approval workflow verified end-to-end
 
-**Exit criteria:** Noor can ingest a URL, present a draft in Discord, and write to vault after owner approval. Search returns results.
+**Exit criteria:** Curator can ingest content, present a draft in Discord, and write to vault after owner approval. Search returns results.
 
 ---
 
@@ -84,95 +84,135 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `finance_personal` schema migration
 - `personal-service` running as systemd unit
 - `finance-service` running as systemd unit
-- Ayah's Hermes profile active in Discord
+- Assistant's Hermes profile active in Discord
 - Morning briefing and evening recap cron verified
 - Finance logging, reconciliation, and zakat calculation verified
 - Habit logging and goal tracking verified
 - Journal entry workflow verified
 
-**Exit criteria:** Ayah delivers a morning briefing. Owner can log a transaction, a habit completion, and a journal entry via Discord. Zakat calculation runs on demand.
+**Exit criteria:** Assistant delivers a morning briefing. Owner can log a transaction, a habit completion, and a journal entry via Discord. Zakat calculation runs on demand.
 
 ---
 
-## Phase 6a — Raha (chief of staff)
+## Phase 6 — Hakim (researcher)
 
-**What:** Business coordination layer. Raha orchestrates C-suite agents via kanban — no direct data access.
+**What:** Shared research capability across all domains.
 
 **Includes:**
-- Raha's Hermes profile active in Discord
-- Kanban toolset configured
-- C-suite delegation workflow verified
+- Researcher's Hermes profile active in Discord (`#research` channel)
+- File toolset enabled — research output written to temp files before vault
+- `knowledge-service` write access for curated research findings
+- Chief of staff's kanban wired to accept research task delegation from business agents
 
-**Exit criteria:** Raha creates a kanban task that a C-suite agent picks up and executes.
+**Exit criteria:** Researcher completes a multi-source research task, writes output to file, stores curated findings to vault. A business agent delegates a research request via cos and receives results.
 
-**Prerequisite:** All personal phases stable.
+**Prerequisite:** All personal phases stable. Working cos.
 
 **Status:** TBP
 
 ---
 
-## Phase 6b — Hala (CFO)
+## Phase 7 — Rashid (investor)
+
+**What:** Investment due diligence with Shariah compliance screening. Replaces manual IBKR + report workflow.
+
+**Includes:**
+- `investment-service` running on port 8104 — IBKR Client Portal API wrapper (read-only)
+- Investor's Hermes profile active in Discord (`#investment` channel)
+- Researcher integration — investor delegates report reading and research, owns compliance and analysis
+- Screening results and due diligence notes written to vault via `knowledge-service`
+
+**No schema migration** — IBKR is the source of truth for portfolio and watchlist data. Vault stores qualitative output.
+
+**Exit criteria:** Investor reads the IBKR watchlist, delegates annual report analysis to researcher, screens a company for Shariah compliance (industry filter + debt ratio + interest income ratio + receivables ratio), calculates purification obligation, computes real return vs inflation, and presents a structured investment decision to the owner.
+
+**Prerequisite:** Researcher working.
+
+**Future scope:** Order placement with approval gate, portfolio rebalancing, portfolio manager expansion.
+
+**Status:** TBP
+
+---
+
+## Phase 8 — Raha (chief of staff)
+
+**What:** Business coordination layer. Raha orchestrates C-suite agents via kanban — no direct data access.
+
+**Includes:**
+- Chief of staff's Hermes profile active in Discord
+- Kanban toolset configured
+- C-suite delegation workflow verified
+
+**Exit criteria:** Chief of staff creates a kanban task that a C-suite agent picks up and executes.
+
+**Prerequisite:** All previous phases tested and stable.
+
+**Status:** TBP
+
+---
+
+## Phase 9 — Hala (CFO)
 
 **What:** Business finance tracking and reporting.
 
 **Includes:**
 - `finance_business` schema migration
 - `finance-service` extended with business finance tools and `svc_finance_business` role
-- Hala's Hermes profile active
+- CFO's Hermes profile active
 
-**Exit criteria:** Hala can log a business expense and generate a financial report.
+**Exit criteria:** CFO can log a business expense and generate financial reports.
 
-**Prerequisite:** Raha working
-
-**Status:** TBP
-
----
-
-## Phase 6c — Omar (CRO)
-
-**What:** CRM and pipeline management.
-
-**Includes:**
-- `crm` schema migration
-- `crm-service` running on port 8104
-- Omar's Hermes profile active
-
-**Exit criteria:** Omar can create a contact, log an interaction, and update a pipeline stage.
-
-**Prerequisite:** Raha working
+**Prerequisite:** CoS working
 
 **Status:** TBP
 
 ---
 
-## Phase 6d — Reem (CTO)
+## Phase 10 — Reem (CTO)
 
 **What:** Developer tooling, GitHub review, and delegated research.
 
 **Includes:**
-- Reem's Hermes profile active
+- CTO's Hermes profile active
 - GitHub MCP configured and pinned to a specific version
 - Sandbox delegation workflow verified
 
-**Exit criteria:** Reem reviews a PR, delegates a research task to a sandbox agent, and synthesizes the output in `#cto-office`.
+**Exit criteria:** CTO reviews a PR, delegates a research task to a sandbox agent, and synthesizes the output in `#cto-office`.
 
-**Prerequisite:** Raha working
+**Prerequisite:** CoS working
 
 **Status:** TBP
 
 ---
 
-## Phase 6e — Mira (CMO)
+## Phase 11 — Mira (CMO)
 
 **What:** Marketing analytics and content performance.
 
 **Includes:**
 - `analytics` schema migration
-- `analytics-service` running on port 8105
+- `analytics-service` running on port 8106
 - Mira's Hermes profile active
 
 **Exit criteria:** Mira can report on campaign performance and surface content metrics.
 
-**Prerequisite:** Raha working
+**Prerequisite:** CoS working
+
+**Status:** TBP
+
+---
+
+## Phase 12 — Omar (COO)
+
+**What:** CRM and pipeline management.
+
+**Includes:**
+- `crm` schema migration
+- `crm-service` running on port 8105
+- COO's Hermes profile active
+
+**Exit criteria:** COO can create a contact, log an interaction, and update a pipeline stage.
+
+**Prerequisite:** CoS working
 
 **Status:** TBP

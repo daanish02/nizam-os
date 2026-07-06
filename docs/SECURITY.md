@@ -16,7 +16,7 @@ Security model across all layers. When adding a new agent or service, every sect
 | Silent package install | Agent running pip at runtime | allow_lazy_installs: false on all profiles |
 | Rogue cron creation | Agent scheduling arbitrary jobs | cron_mode: deny on most profiles |
 | Spend abuse | Agent making excessive LLM calls | LiteLLM virtual keys + spend tracking |
-| Delegation chain overreach | Sub-agent spawning further sub-agents | max_spawn_depth: 2 on Reem |
+| Delegation chain overreach | Sub-agent spawning further sub-agents | depth and concurrent per-agent basis |
 | Supply chain | npm / pip packages at runtime | uv lockfile + allow_lazy_installs: false |
 
 ---
@@ -25,7 +25,7 @@ Security model across all layers. When adding a new agent or service, every sect
 
 **Owner → agents:** The owner communicates through Discord. `DISCORD_ALLOWED_USERS` restricts which Discord user IDs can interact with each agent. Only the owner's ID is listed.
 
-**Agent → tools:** Every tool call surfaces to the owner in Discord before executing (`approvals.mode: manual`). Agents cannot act without human confirmation.
+**Agent → tools:** Mutating tool calls (writes, updates, deletes, terminal commands that change state) surface to the owner in Discord before executing via `approvals.mode: manual`. Read-only tool calls do not require approval.
 
 **Agent → MCP services:** Each agent's `config.yaml` specifies exactly which MCP tools it can call. Tools not in `tools.include` are invisible to the agent.
 
@@ -78,10 +78,10 @@ All internal services bind to `127.0.0.1` only. No service is publicly reachable
 |------|--------|--------------|
 | `svc_litellm` | Owns `litellm` schema | Everything else |
 | `svc_knowledge` | RW `knowledge.*`, INSERT `audit.log` | Everything else |
-| `svc_finance_personal` | RW `finance_personal.*`, INSERT `audit.log` | `finance_business.*`, `personal.*` |
-| `svc_personal` | RW `personal.*`, INSERT `audit.log` | `finance.*`, `business.*` |
-| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | `finance_personal.*` |
-| `svc_crm` | RW `crm.*`, INSERT `audit.log` | `finance.*` |
+| `svc_finance_personal` | RW `finance_personal.*`, INSERT `audit.log` | Everything else |
+| `svc_personal` | RW `personal.*`, INSERT `audit.log` | Everything else |
+| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | Everything else |
+| `svc_crm` | RW `crm.*`, INSERT `audit.log` | Everything else |
 | `svc_analytics` | RW `analytics.*`, INSERT `audit.log` | Everything else |
 | `grafana` | SELECT on all schemas | Any write |
 
@@ -96,34 +96,34 @@ Applied to all profiles without exception. Any new profile must include all of t
 | Control | Rule |
 |---------|------|
 | `allow_lazy_installs: false` | No runtime pip install — any agent can pull arbitrary code otherwise |
-| `approvals.mode: manual` | Every tool call (file write, terminal, MCP, memory) requires Discord approval |
+| `approvals.mode: manual` | Mutating tool calls (writes, updates, deletes, state-changing terminal commands) require Discord approval. Reads do not. |
 | `cron_mode: deny` | No persistent scheduled jobs without explicit setup approval |
 | `redact_secrets: true` | Hermes scrubs secret patterns from tool output |
 | `DISCORD_ALLOWED_USERS` | Only the owner's Discord user ID can interact with any agent |
 | `discord.allowed_channels` | Each agent sees only its own channels |
-| Compression model pinned | Separate from primary model; prevents cost bleed |
+| Compression model pinned | Cheap and fast model; prevents cost bleed |
 
 ### Terminal restrictions
 
 | Agent | Terminal | Restriction |
 |-------|----------|-------------|
-| Nazim | Enabled | `command_allowlist` + `/etc/sudoers.d/nazim-nizam` (service restart only — not full sudo) |
-| Reem | Enabled | `command_allowlist` — read-only diagnostics only, no restarts, no installs |
+| Admin | Enabled | `command_allowlist` + `/etc/sudoers.d/admin-nizam` (service restart only — not full sudo) |
+| CTO | Enabled | `command_allowlist` — read-only diagnostics only, no restarts, no installs |
 | All others | Disabled | `terminal` toolset not loaded |
 
 ---
 
 ## Prompt injection
 
-**Untrusted input surfaces:** Discord messages, web search results (Reem, Omar, Mira), PDF content, image descriptions from vision model, YouTube transcripts, bank statement content.
+**Untrusted input surfaces:** Discord messages, web search results, PDF content, image descriptions from vision model, YouTube transcripts, bank statement content.
 
-**Controls:** `DISCORD_ALLOWED_USERS` limits message senders. `approvals.mode: manual` means every tool call surfaces to the owner — injection cannot act without human confirmation. `redact_secrets: true` reduces exfiltration value. Minimal tool surface per agent limits blast radius.
+**Controls:** `DISCORD_ALLOWED_USERS` limits message senders. `approvals.mode: manual` means every mutating tool call surfaces to the owner — injection cannot write, delete, or execute without human confirmation. `redact_secrets: true` reduces exfiltration value. Minimal tool surface per agent limits blast radius.
 
 **Residual risk:** A sufficiently convincing injection could trick the owner into approving a malicious action. The owner sees the tool call but must recognize it as malicious. No automated content inspection is in place.
 
 ---
 
-## Delegation security (Reem only)
+## Delegation security
 
 Reem is the only agent with the `delegation` toolset.
 
@@ -131,7 +131,7 @@ Reem is the only agent with the `delegation` toolset.
 - `subagent_auto_approve: false` — sandbox agent tool calls still require Discord approval.
 - `max_concurrent_children: 3`.
 - Sandbox agents never post to Discord directly. Reem synthesizes and posts in `#cto-office`.
-- Raha coordinates via kanban, not delegation — she has zero MCP access and zero delegation toolset. She cannot directly read or write any database.
+- Chief of staff coordinates via kanban, not delegation — has zero MCP access and zero delegation toolset. Cannot directly read or write any database.
 
 ---
 
@@ -139,7 +139,7 @@ Reem is the only agent with the `delegation` toolset.
 
 **Python:** All dependencies declared in `pyproject.toml` per service and pinned in `uv.lock`. `allow_lazy_installs: false` prevents runtime installation.
 
-**Node/npx:** GitHub MCP server (`@modelcontextprotocol/server-github`) is pulled from npm at Hermes session start. This is a trust surface — a compromised npm package could execute arbitrary code. Mitigation: pin a specific version when Reem is built.
+**Node/npx:** GitHub MCP server (`@modelcontextprotocol/server-github`) is pulled from npm at Hermes session start. This is a trust surface — a compromised npm package could execute arbitrary code. Mitigation: pin a specific version when cto is built.
 
 **Hermes:** Treated as a trusted third-party binary. Never manually patched. Updated only via its official update mechanism.
 
