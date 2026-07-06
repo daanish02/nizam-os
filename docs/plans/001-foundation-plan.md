@@ -12,7 +12,7 @@
 
 Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` and `docs/grafana/business-dashboard.json` are committed before wiping.
 
-**Prerequisite:** `~/nizam-dotfiles/docs/startup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, node-exporter). Phase 1 builds on top of that baseline.
+**Prerequisite:** `~/nizam-dotfiles/docs/001-setup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, node-exporter). Phase 1 builds on top of that baseline.
 
 ---
 
@@ -1820,7 +1820,7 @@ This is the single command that builds Phase 1 from a fresh Ubuntu 24.04 machine
 ```bash
 #!/usr/bin/env bash
 # Idempotent Phase 1 foundation setup for nizam-os.
-# Prerequisite: ~/nizam-dotfiles/docs/startup-guide.md complete.
+# Prerequisite: ~/nizam-dotfiles/docs/001-setup-guide.md complete.
 #
 # Rebuild (reusing encrypted creds):
 #   git clone <repo> ~/nizam-os

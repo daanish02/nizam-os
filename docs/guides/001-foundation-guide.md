@@ -10,7 +10,7 @@
 
 ## Prerequisites
 
-- [ ] `~/nizam-dotfiles/docs/startup-guide.md` complete — all 9 steps done and verified
+- [ ] `~/nizam-dotfiles/docs/001-setup-guide.md` complete — all 10 steps done and verified
 - [ ] Fresh VPS reachable via Tailscale (`ssh vazir@<tailscale-ip>` works)
 - [ ] `git` and `age` available on VPS
 

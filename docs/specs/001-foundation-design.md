@@ -7,7 +7,7 @@
 
 ## Prerequisite
 
-Complete [nizam-dotfiles](~/nizam-dotfiles/docs/startup-guide.md) machine setup before this phase. That repo covers: Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, zsh, Prometheus, Grafana, node-exporter, and dotfiles security metric timers. Phase 1 builds on top of that baseline — it does not repeat it.
+Complete [nizam-dotfiles](~/nizam-dotfiles/docs/001-setup-guide.md) machine setup before this phase. That repo covers: Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, zsh, Prometheus, Grafana, node-exporter, and dotfiles security metric timers. Phase 1 builds on top of that baseline — it does not repeat it.
 
 One external backup item must exist, if reusing keys, before proceeding: `secrets/nizam-age-key.txt` (the age private key). Without it, `nizam-os.env.enc` cannot be decrypted. Back this up to a secure external location before any VPS wipe.
 
