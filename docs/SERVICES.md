@@ -165,9 +165,10 @@ Every profile has:
 - Terminal: disabled
 - Cron: `cron_mode: deny`
 - MCP: `knowledge-service` (read + write)
-- File toolset: enabled — research output written to temp files, not held in context. Prevents context window exhaustion on deep multi-source research tasks.
+- File toolset: enabled — intermediate working files (gathered sources, notes, partial synthesis) written to disk during a research task, not held in context. Deleted on task completion; final curated output goes to vault via `knowledge-service`. Prevents context window exhaustion on deep multi-source tasks.
 - Delegation: `max_spawn_depth: 1`, `subagent_auto_approve: false`, `max_concurrent_children: 5`
 - Receives research requests from business agents via cos (kanban) and from owner directly.
+- **Researcher owns:** web research, annual report reading, multi-source synthesis. Investor delegates raw research to researcher and consumes the output.
 
 ### Rashid (investor)
 
@@ -175,7 +176,7 @@ Every profile has:
 - Cron: `cron_mode: deny`
 - MCP: `investment-service` (all tools), `knowledge-service` (read + write), `math-service` (all tools)
 - Delegation: `max_spawn_depth: 1`, `subagent_auto_approve: false`, `max_concurrent_children: 3`
-- Research delegated to researcher — investor does not do raw research itself.
+- **Investor owns:** IBKR data reads, Shariah compliance screening (industry filter, debt ratio, interest income ratio, receivables ratio), purification calculation, real return vs inflation analysis, investment decision synthesis.
 
 ### Raha (chief of staff)
 
@@ -183,18 +184,21 @@ Every profile has:
 - Cron: `cron_mode: manual`
 - MCP: none — coordinates via kanban delegation to C-suite agents
 - No direct data access: cannot read or write any database directly
+- Cross-domain escalation: when a task spans two C-suite domains and requires a decision, it synthesizes the context and notifies the owner. C-suite agents do not resolve cross-domain conflicts autonomously.
 
 ### Hala (CFO)
 
 - Terminal: disabled
 - Cron: `cron_mode: deny`
 - MCP: `finance-service` (business tools only), `math-service` (all tools)
+- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
 
 ### Omar (COO)
 
 - Terminal: disabled
 - Cron: `cron_mode: deny`
 - MCP: `crm-service` (all tools), `finance-service` (2 read-only tools)
+- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
 
 ### Reem (CTO)
 
@@ -203,6 +207,7 @@ Every profile has:
 - MCP: `knowledge-service` (read-only), `crm-service` (read-only), GitHub MCP (read + write)
 - Delegation: `max_spawn_depth: 2`, `subagent_auto_approve: false`, `max_concurrent_children: 2`
 - Technical research stays with cto via sandbox delegation. Non-technical research delegated to researcher via cos.
+- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
 
 ### Mira (CMO)
 
@@ -210,3 +215,4 @@ Every profile has:
 - Cron: `cron_mode: deny`
 - MCP: `analytics-service` (all tools), `knowledge-service` (read-only), `crm-service` (read-only)
 - Research: delegated to researcher via cos — cmo carries no web search tools
+- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.

@@ -17,11 +17,11 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - LiteLLM proxy with OpenRouter
 - Prometheus + node-exporter
 - Loki + Promtail
-- Grafana (Personal dashboard + Business dashboard skeleton)
+- Grafana (Personal dashboard skeleton)
 - age encryption setup; `secrets/nizam-os.env` populated
 - `audit` schema migration run
 
-**Exit criteria:** LiteLLM proxy reachable at `localhost:4000`. PostgreSQL running with `nizam` database and `audit.log` table. Grafana loading at `localhost:3000`. 
+**Exit criteria:** LiteLLM proxy reachable at `localhost:4000`. PostgreSQL running with `nizam` database and `audit.log` table. Loki reachable at `localhost:3100`. Grafana loading at `localhost:3000`.
 
 ---
 
@@ -39,7 +39,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `discord.allowed_channels` set on all profiles
 - LiteLLM Prisma migration run (spend tracking active)
 - `/etc/sudoers.d/admin-nizam` created
-- Metrics timers wired up (LLM spend, service health, tool call counts)
+- Metrics timers wired up
 
 **Exit criteria:** Discord server exists with all channels and all bot tokens available. Hermes can connect to Discord. All Hermes profile configs pass the security checklist in [SECURITY](docs/SECURITY.md). Spend tracking recording in LiteLLM DB.
 
@@ -47,15 +47,17 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 
 ## Phase 3 — Nazim (system admin)
 
-**What:** System monitoring, self-healing and Hermes help live.
+**What:** System monitoring, self-healing, and system knowledge base live.
 
 **Includes:**
 - Admin's Hermes profile active in Discord
 - Admin can restart all defined services via `command_allowlist`
 - Incident reporting to Discord verified
 - Metrics dashboards showing service health
+- Read access to `nizam-os/docs/` and `nizam-dotfiles/docs/` — admin can answer questions about system design, agent roster, specs, plans, and guides
+- Read access to Hermes documentation — admin can answer questions about Hermes framework behavior, profile config options, and skill configuration
 
-**Exit criteria:** Admin detects a service failure, restarts it, and posts an incident report in Discord without owner intervention.
+**Exit criteria:** Admin detects a service failure, restarts it, and posts an incident report in Discord without owner intervention. Owner can ask admin a question about the system or Hermes framework and receive an accurate answer.
 
 ---
 
@@ -142,6 +144,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - Chief of staff's Hermes profile active in Discord
 - Kanban toolset configured
 - C-suite delegation workflow verified
+- Grafana (Business dashboard skeleton)
 
 **Exit criteria:** Chief of staff creates a kanban task that a C-suite agent picks up and executes.
 

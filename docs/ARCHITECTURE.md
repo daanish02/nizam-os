@@ -109,7 +109,7 @@ Notes use an `areas` field (multi-value controlled vocabulary) instead of a stri
 
 ## Observability
 
-Systemd timers write `.prom` metric files for LLM spend, service health, and tool call counts. Prometheus scrapes these via node-exporter's textfile collector. Grafana dashboards visualize agent spend and service status. The Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only).
+Systemd timers write `.prom` metric files scraped by Prometheus via node-exporter's textfile collector. Grafana dashboards visualize system metrics. The Grafana PostgreSQL datasource connects as the `grafana` DB role (SELECT-only).
 
 ---
 

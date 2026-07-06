@@ -115,6 +115,18 @@ Every external service or dependency the system connects to: what it is, why it'
 
 ---
 
+## Obsidian
+
+**What:** Note-taking GUI for the knowledge vault. Vault files live on the VPS at `~/nizam-vault/` (a git repo). Local machines sync the vault by running `git fetch && git pull` in the cloned repo directory — Obsidian opens that local clone.
+
+**Why:** Obsidian's graph view and local search require vault files to exist on the local machine. The VPS is the source of truth; local machines are read replicas for browsing.
+
+**Auth:** None — Obsidian reads local files. Git sync uses standard SSH key auth to the vault remote.
+
+**Failure mode:** If the vault remote is unreachable, local machines keep the last synced state. No impact on agents or vault writes on the VPS.
+
+---
+
 ## GitHub
 
 **What:** Read access to the nizam-os repo. CTO uses the official GitHub MCP server to review PRs, list issues, and read commits. Limited write access for PR operations.
@@ -165,7 +177,7 @@ Every external service or dependency the system connects to: what it is, why it'
 
 **Why:** When an agent behaves unexpectedly, Langfuse lets you inspect the exact prompt and response at each step. Not needed in normal operation — enabled only during active debugging or tracing sessions.
 
-**How it's toggled:** Langfuse integration is controlled via an environment variable in `nizam-os.env`. When `LANGFUSE_ENABLED=true`, LiteLLM sends traces to the Langfuse instance. When absent or `false`, no tracing overhead. Hermes also supports Langfuse natively as a plugin — can be configured per-profile for targeted agent tracing.
+**Integrations:** Two surfaces. LiteLLM sends model-call-level traces (prompt, response, tokens, cost, latency) — toggled via `langfuse_enabled` flag in LiteLLM's `config.yaml`. Hermes sends agent-level traces (tool calls, messages, session flow) — toggled per-profile via `plugins.langfuse.enabled` in each profile's `config.yaml`. Both default off; enabled only during active debugging sessions.
 
 **Auth:** `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST` in `nizam-os.env`. Host points to the self-hosted instance (localhost or Tailscale IP).
 
@@ -179,11 +191,23 @@ Every external service or dependency the system connects to: what it is, why it'
 
 **What:** Metrics collection for observability. Not external but has an integration surface.
 
-**Why:** Three systemd timers write `.prom` textfiles for LLM spend, service health, and tool call counts. node-exporter picks these up and exposes them to Prometheus.
+**Why:** Systemd timers write `.prom` textfiles for system and application metrics. node-exporter picks these up via the textfile collector and exposes them to Prometheus.
 
 **Auth:** None — localhost only.
 
 **Failure mode:** If Prometheus is down, metrics stop updating. Agents continue operating normally.
+
+---
+
+## Loki
+
+**What:** Log aggregation backend. Promtail tails `nizam-os/logs/*.log` and ships lines to Loki. Grafana reads logs via the Loki datasource — the same dashboard that shows metrics also shows structured logs.
+
+**Why:** Centralizes logs from all MCP services and bash scripts into one queryable store. No need to SSH to tail logs; search and filter from Grafana.
+
+**Auth:** None — localhost only. Loki binds to `127.0.0.1:3100`.
+
+**Failure mode:** If Loki is down, Promtail buffers locally up to its configured limit then drops. Agents and services continue operating normally. Logs resume shipping on Loki restart.
 
 ---
 

@@ -58,6 +58,7 @@ All internal services bind to `127.0.0.1` only. No service is publicly reachable
 | LiteLLM proxy | 127.0.0.1:4000 |
 | All MCP services | 127.0.0.1:PORT |
 | Prometheus | 127.0.0.1:9090 |
+| Loki | 127.0.0.1:3100 |
 | Grafana | 127.0.0.1:3000 (access via Tailscale) |
 
 ---
@@ -135,6 +136,20 @@ Reem is the only agent with the `delegation` toolset.
 
 ---
 
+## Sandbox
+
+CTO's delegated subagents run inside a firejail sandbox. Firejail restricts each subagent process to a contained environment.
+
+- **Filesystem:** read-only outside the designated workspace directory. No writes to system paths or other agent directories.
+- **Network:** outbound limited to `127.0.0.1` only — LiteLLM and MCP services. No direct internet access.
+- **Process visibility:** restricted `/proc` view — subagent cannot see or signal processes outside its namespace.
+
+**Why:** CTO's subagents execute code as part of technical research and diagnosis workflows. Firejail contains a misbehaving subagent to its task scope — it cannot affect the host, other agents, or the database even if its tool calls are malicious.
+
+**Integration:** Hermes spawns sandboxed subagents via `sandbox.firejail: true` in CTO's profile. `subagent_auto_approve: false` ensures all subagent tool calls still surface to the owner before executing.
+
+---
+
 ## Supply chain
 
 **Python:** All dependencies declared in `pyproject.toml` per service and pinned in `uv.lock`. `allow_lazy_installs: false` prevents runtime installation.
@@ -159,6 +174,7 @@ Reem is the only agent with the `delegation` toolset.
 - [ ] `tools.include` specified — no unrestricted MCP access
 - [ ] `terminal` disabled unless mandate requires it; if enabled, `command_allowlist` set
 - [ ] Dedicated DB role created with minimum required grants
+- [ ] Delegation toolset disabled for all except selected agents with appropriate depth and concurrent workers
 
 ## Checklist — adding a new service
 
