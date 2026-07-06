@@ -10,8 +10,9 @@ _nizam_log() {
     local level="$1"; shift
     local msg="$*"
     local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    local line
-    printf -v line "%s [%-5s] [%s] %s" "$ts" "$level" "${SCRIPT_NAME:-script}" "$msg"
+    local escaped_msg="${msg//\\/\\\\}"
+    escaped_msg="${escaped_msg//\"/\\\"}"
+    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"service\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
     echo "$line"
     echo "$line" >> "$NIZAM_LOG"
 }
