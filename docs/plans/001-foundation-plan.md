@@ -1,0 +1,2165 @@
+# Phase 1 Foundation — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build the infrastructure layer (PostgreSQL, Redis, LiteLLM, audit schema, nizam-shared refactor, systemd units, observability) that all future phases run on, delivered as one idempotent `scripts/setup/foundation.sh`.
+
+**Architecture:** A single shell script (`foundation.sh`) installs packages, configures services, runs migrations, and wires systemd units — detecting fresh vs rebuild automatically from presence of `secrets/nizam.env.enc`. All secrets live in `secrets/nizam.env` (age-encrypted at rest via sops). The nizam-shared library is refactored so all MCP services share the same `POSTGRES_DSN` connection pattern via per-service systemd ExecStart wrappers.
+
+**Tech Stack:** Ubuntu 24.04, PostgreSQL 16 + pgvector + ParadeDB, Redis 7, LiteLLM (uv tool), sops + age, Python 3.12+, uv, systemd, Prometheus node-exporter textfile collector.
+
+## Before You Start
+
+Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` and `docs/grafana/business-dashboard.json` are committed before wiping.
+
+**Prerequisite:** `~/nizam-dotfiles/docs/startup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, node-exporter). Phase 1 builds on top of that baseline.
+
+---
+
+## Global Constraints
+
+- User: `vazir`. All nizam-os services run as `vazir`.
+- All internal services bind `127.0.0.1` only.
+- All service logs → `~/nizam-os/logs/<service-name>.log` via systemd `StandardOutput=append:`.
+- Single secrets file: `secrets/nizam.env`. No per-service `.env` for MCP services.
+- Python 3.12+. All Python tooling via `uv`.
+- PostgreSQL 16 (Ubuntu 24.04 default apt).
+- All paths in this plan are relative to `~/nizam-os/` unless stated.
+
+---
+
+## File Map
+
+**Created:**
+
+| File | Purpose |
+|------|---------|
+| `scripts/_log.sh` | Shared bash logging helper (sourced by other scripts) |
+| `scripts/encrypt-env.sh` | Manual: nizam.env → nizam.env.enc |
+| `scripts/decrypt-env.sh` | Manual: nizam.env.enc → nizam.env |
+| `scripts/watch-env.sh` | Long-running: auto-encrypt on nizam.env close_write |
+| `scripts/generate-software-inventory.sh` | Print apt packages + local bins |
+| `scripts/generate-services-inventory.sh` | Print tracked service statuses |
+| `scripts/watch-inventory.sh` | Diff inventory hourly, notify via webhook |
+| `scripts/metrics-llm.py` | Write nizam-llm.prom (LLM spend metrics) |
+| `scripts/metrics-services.sh` | Write nizam-services.prom (service health) |
+| `scripts/metrics-toolcalls.py` | Write nizam-toolcalls.prom (tool call counts) |
+| `scripts/setup/setup-db.sh` | Idempotent: create nizam DB, svc_litellm role, litellm schema |
+| `scripts/setup/install-symlinks.sh` | Wire repo files → system locations |
+| `scripts/setup/foundation.sh` | **Main entry point** — idempotent Phase 1 setup |
+| `db/migrations/001_audit_schema.sql` | Create audit schema + audit.log table |
+| `secrets/nizam.env.example` | Keys-only template (no values) — committed to git |
+| `secrets/.gitignore` | Gitignore nizam.env and nizam-age-key.txt |
+| `inventory/tracked-services.txt` | Services monitored by watcher-inventory |
+| `config/litellm.yaml` | LiteLLM proxy config |
+| `config/redis.conf` | Redis config (bind, requirepass placeholder, maxmemory) |
+| `config/loki.yaml` | Loki server config (local storage, port 3100) |
+| `config/promtail.yaml` | Promtail config (tails logs/*.log, ships to Loki) |
+| `config/logrotate.nizam-os` | Log rotation for nizam-os/logs/*.log |
+| `systemd/litellm-proxy.service` | LiteLLM on :4000 |
+| `systemd/watcher-env.service` | Auto-encrypt watcher (persistent) |
+| `systemd/watcher-inventory.service` | Inventory diff (oneshot) |
+| `systemd/watcher-inventory.timer` | Hourly trigger |
+| `systemd/metrics-llm.service` | LLM metrics writer (oneshot) |
+| `systemd/metrics-llm.timer` | 1-minute trigger |
+| `systemd/metrics-services.service` | Service health writer (oneshot) |
+| `systemd/metrics-services.timer` | 5-minute trigger |
+| `systemd/metrics-toolcalls.service` | Tool call metrics writer (oneshot) |
+| `systemd/metrics-toolcalls.timer` | 5-minute trigger |
+
+**Modified:**
+
+| File | Change |
+|------|--------|
+| `services/shared/nizam_shared/logger.py` | Add `service`, `module`, `func` fields; drop `logger` field |
+| `services/shared/nizam_shared/base.py` | Read `POSTGRES_DSN` env var; drop hardcoded `svc_knowledge` |
+| `services/shared/nizam_shared/audit.py` | Write to `audit.log` with generic schema; drop knowledge-specific fields |
+
+---
+
+## Task 1: Repo skeleton + secrets template
+
+**Files:**
+- Create: `secrets/.gitignore`
+- Create: `secrets/nizam.env.example`
+- Create dirs: `logs/`, `db/migrations/`, `inventory/`
+
+- [ ] **Step 1: Create secrets/.gitignore**
+
+```
+nizam.env
+nizam-age-key.txt
+```
+
+- [ ] **Step 2: Create secrets/nizam.env.example**
+
+This is the committed keys-only template. The `watcher-env.service` regenerates this on every encrypt, but include it in the plan so the fresh clone has it before any secrets exist.
+
+```bash
+# Phase 1 variables — fill all values in nizam.env (never commit nizam.env)
+OPENROUTER_API_KEY=
+LITELLM_MASTER_KEY=
+LITELLM_DB_PASSWORD=
+LITELLM_DB_URL=
+REDIS_URL=
+REDIS_PASSWORD=
+DISCORD_WEBHOOK_LOGS=
+```
+
+> `DISCORD_WEBHOOK_LOGS` is the Discord webhook URL for inventory change notifications → `#logs` channel. Leave empty in Phase 1; fill in Phase 2 after Discord server is created. The watcher-inventory script skips the curl call if the value is empty.
+
+- [ ] **Step 3: Generate passwords + create required directories**
+
+Generate strong passwords for the three secret values that need them (run before filling nizam.env):
+
+```bash
+openssl rand -base64 32   # → LITELLM_DB_PASSWORD  (svc_litellm PostgreSQL role)
+openssl rand -base64 32   # → REDIS_PASSWORD        (Redis requirepass)
+openssl rand -base64 32   # → LITELLM_MASTER_KEY    (LiteLLM admin key)
+```
+
+Create directory structure:
+```bash
+mkdir -p logs db/migrations inventory docs/grafana
+touch logs/.gitkeep inventory/.gitkeep docs/grafana/.gitkeep
+```
+
+Add to root `.gitignore` if not already present:
+```
+logs/*.log
+secrets/nizam.env
+secrets/nizam-age-key.txt
+inventory/software.txt
+inventory/services.txt
+inventory/*.sha256
+inventory/last.diff
+```
+
+- [ ] **Step 4: Verify**
+
+```bash
+ls secrets/.gitignore secrets/nizam.env.example
+# Expected: both files exist
+cat secrets/nizam.env.example
+# Expected: 7 KEY= lines, no values
+```
+
+---
+
+## Task 2: Secrets management scripts + watcher
+
+**Files:**
+- Create: `scripts/_log.sh`
+- Create: `scripts/encrypt-env.sh`
+- Create: `scripts/decrypt-env.sh`
+- Create: `scripts/watch-env.sh`
+- Create: `systemd/watcher-env.service`
+
+- [ ] **Step 1: Create scripts/_log.sh**
+
+Sourced by every one-shot bash script. Set `SCRIPT_NAME` before sourcing. Outputs JSON matching the Python logger format (minus `module`/`func` which don't apply to bash). Promtail parses `level` and `service` labels from the same fields.
+
+```bash
+#!/usr/bin/env bash
+# Shared logging helper for nizam-os scripts.
+# Usage: SCRIPT_NAME=my-script source scripts/_log.sh
+# Writes JSON to ~/nizam-os/logs/scripts.log and stdout.
+# Format: {"ts":"...","level":"INFO","service":"watch-inventory","msg":"..."}
+
+NIZAM_LOG="${NIZAM_LOG:-$HOME/nizam-os/logs/scripts.log}"
+mkdir -p "$(dirname "$NIZAM_LOG")"
+
+_nizam_log() {
+    local level="$1"; shift
+    local msg="$*"
+    local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    # Escape backslashes and double-quotes in msg for valid JSON
+    local escaped_msg="${msg//\\/\\\\}"
+    escaped_msg="${escaped_msg//\"/\\\"}"
+    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"service\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
+    echo "$line"
+    echo "$line" >> "$NIZAM_LOG"
+}
+
+log_info()  { _nizam_log "INFO"  "$@"; }
+log_warn()  { _nizam_log "WARN"  "$@"; }
+log_error() { _nizam_log "ERROR" "$@"; }
+```
+
+- [ ] **Step 2: Create scripts/encrypt-env.sh**
+
+```bash
+#!/usr/bin/env bash
+# Encrypt nizam.env → nizam.env.enc using sops + age.
+# Run manually: bash scripts/encrypt-env.sh
+# Also called by watcher-env.service on every nizam.env save.
+set -euo pipefail
+
+export SOPS_AGE_KEY_FILE="$HOME/nizam-os/secrets/nizam-age-key.txt"
+
+PUBKEY=$(grep "public key" "$SOPS_AGE_KEY_FILE" | awk '{print $NF}')
+
+sops \
+  --encrypt \
+  --input-type dotenv \
+  --output-type dotenv \
+  --age "$PUBKEY" \
+  "$HOME/nizam-os/secrets/nizam.env" \
+  > "$HOME/nizam-os/secrets/nizam.env.enc"
+```
+
+- [ ] **Step 3: Create scripts/decrypt-env.sh**
+
+```bash
+#!/usr/bin/env bash
+# Decrypt nizam.env.enc → nizam.env using sops + age.
+# Run manually after git clone or when .enc is updated.
+set -euo pipefail
+
+export SOPS_AGE_KEY_FILE="$HOME/nizam-os/secrets/nizam-age-key.txt"
+
+sops \
+  --decrypt \
+  --input-type dotenv \
+  --output-type dotenv \
+  "$HOME/nizam-os/secrets/nizam.env.enc" \
+  > "$HOME/nizam-os/secrets/nizam.env"
+```
+
+- [ ] **Step 4: Create scripts/watch-env.sh**
+
+Runs as a long-lived service. On every save of `nizam.env`, re-encrypts and regenerates `.env.example`.
+
+```bash
+#!/usr/bin/env bash
+# Watch nizam.env and auto-encrypt + update .env.example on every save.
+# Runs as watcher-env.service (persistent via inotifywait).
+set -euo pipefail
+
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="watch-env"
+source "$NIZAM_OS/scripts/_log.sh"
+
+ENV_FILE="$NIZAM_OS/secrets/nizam.env"
+EXAMPLE_FILE="$NIZAM_OS/secrets/nizam.env.example"
+
+update_example() {
+    grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" \
+        | sed 's/=.*/=/' \
+        > "$EXAMPLE_FILE"
+}
+
+log_info "watching $ENV_FILE"
+
+while inotifywait -e close_write "$ENV_FILE"; do
+    log_info "encrypting nizam.env"
+    "$NIZAM_OS/scripts/encrypt-env.sh"
+    log_info "updating .env.example"
+    update_example
+done
+```
+
+- [ ] **Step 5: Create systemd/watcher-env.service**
+
+```ini
+[Unit]
+Description=Watch nizam.env and encrypt on changes
+
+[Service]
+Type=simple
+User=vazir
+ExecStart=/home/vazir/nizam-os/scripts/watch-env.sh
+Restart=always
+RestartSec=2
+StandardOutput=append:/home/vazir/nizam-os/logs/watcher-env.log
+StandardError=append:/home/vazir/nizam-os/logs/watcher-env.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 6: Verify**
+
+```bash
+bash -n scripts/_log.sh && echo "_log.sh: OK"
+bash -n scripts/encrypt-env.sh && echo "encrypt-env.sh: OK"
+bash -n scripts/decrypt-env.sh && echo "decrypt-env.sh: OK"
+bash -n scripts/watch-env.sh && echo "watch-env.sh: OK"
+# Expected: all 4 print OK
+```
+
+---
+
+## Task 3: Database setup + audit schema migration
+
+**Files:**
+- Create: `scripts/setup/setup-db.sh`
+- Create: `db/migrations/001_audit_schema.sql`
+
+- [ ] **Step 1: Create scripts/setup/setup-db.sh**
+
+Idempotent — safe to re-run. Creates the `nizam` database, `svc_litellm` role, and `litellm` schema. Requires `LITELLM_DB_PASSWORD` in environment (sourced from `nizam.env` by `foundation.sh`).
+
+```bash
+#!/usr/bin/env bash
+# Idempotent PostgreSQL setup for Phase 1.
+# Creates: nizam database, svc_litellm role, litellm schema, pgvector, pg_search.
+# Run via foundation.sh (LITELLM_DB_PASSWORD must be in env).
+set -euo pipefail
+
+: "${LITELLM_DB_PASSWORD:?Set LITELLM_DB_PASSWORD before running this script}"
+
+sudo -u postgres psql <<SQL
+-- Database
+SELECT 'CREATE DATABASE nizam'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nizam')
+\gexec
+
+-- Role
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'svc_litellm') THEN
+        CREATE USER svc_litellm WITH PASSWORD '${LITELLM_DB_PASSWORD}';
+    ELSE
+        ALTER USER svc_litellm WITH PASSWORD '${LITELLM_DB_PASSWORD}';
+    END IF;
+END\$\$;
+
+GRANT CONNECT ON DATABASE nizam TO svc_litellm;
+SQL
+
+sudo -u postgres psql nizam <<SQL
+-- Extensions
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_search;
+
+-- litellm schema (Prisma will create tables on first LiteLLM start)
+CREATE SCHEMA IF NOT EXISTS litellm AUTHORIZATION svc_litellm;
+GRANT ALL ON SCHEMA litellm TO svc_litellm;
+ALTER DEFAULT PRIVILEGES IN SCHEMA litellm GRANT ALL ON TABLES TO svc_litellm;
+ALTER DEFAULT PRIVILEGES IN SCHEMA litellm GRANT ALL ON SEQUENCES TO svc_litellm;
+SQL
+
+echo ""
+echo "Database setup complete."
+echo ""
+echo "Verify LITELLM_DB_URL in nizam.env:"
+echo "  LITELLM_DB_URL=postgresql://svc_litellm:PASSWORD@localhost:5432/nizam?schema=litellm"
+```
+
+> The `?schema=litellm` suffix tells LiteLLM's Prisma ORM to create spend-tracking tables inside the `litellm` schema instead of `public`. This is required — without it, Prisma pollutes the public schema.
+
+- [ ] **Step 2: Create db/migrations/001_audit_schema.sql**
+
+Run once during Phase 1 setup. Creates the shared append-only audit table. No grants are given here — each service's own migration adds `INSERT` for its role when that phase runs.
+
+```sql
+-- 001_audit_schema.sql
+-- Shared audit log. Append-only by grant (no UPDATE/DELETE ever granted).
+-- Service roles receive INSERT in their own phase migrations.
+
+CREATE SCHEMA IF NOT EXISTS audit;
+
+CREATE TABLE IF NOT EXISTS audit.log (
+    id           BIGSERIAL    PRIMARY KEY,
+    schema_name  TEXT         NOT NULL,
+    table_name   TEXT         NOT NULL,
+    operation    TEXT         NOT NULL,   -- INSERT | UPDATE | DELETE
+    actor        TEXT         NOT NULL,   -- Hermes profile name
+    row_id       BIGINT,                  -- PK of affected row; NULL for bulk ops
+    before_state JSONB,                   -- row before mutation; NULL for INSERT
+    after_state  JSONB,                   -- row after mutation; NULL for DELETE
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+```
+
+- [ ] **Step 3: Verify**
+
+```bash
+bash -n scripts/setup/setup-db.sh && echo "setup-db.sh: OK"
+
+# Check SQL syntax (requires psql installed locally)
+psql --help >/dev/null && \
+  psql -v ON_ERROR_STOP=1 --no-psqlrc -f db/migrations/001_audit_schema.sql \
+    "postgresql://postgres@localhost/postgres" 2>&1 | head -5 || true
+# If psql is not yet installed, just check the file exists:
+ls db/migrations/001_audit_schema.sql && echo "migration file: OK"
+```
+
+---
+
+## Task 4: nizam-shared library refactor
+
+**Files:**
+- Modify: `services/shared/nizam_shared/logger.py`
+- Modify: `services/shared/nizam_shared/base.py`
+- Modify: `services/shared/nizam_shared/audit.py`
+
+**Context:** The existing library hardcodes the `svc_knowledge` PostgreSQL role and writes to `knowledge.vault_audit`. This blocks all other services from using ServiceBase. The refactor makes the connection generic (read from `POSTGRES_DSN` env var) and points the audit logger at the shared `audit.log` table.
+
+- [ ] **Step 1: Replace services/shared/nizam_shared/logger.py**
+
+New format adds `service`, `module`, `func` fields matching the spec. `service` = logger name = service name passed to `ServiceBase(name=...)`. `module` = Python's `record.module` (the `__name__` of the calling file). `func` = `record.funcName`.
+
+```python
+import json
+import logging
+import sys
+from datetime import datetime, timezone
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        entry: dict = {
+            "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds") + "Z",
+            "level": record.levelname,
+            "service": record.name,
+            "module": record.module,
+            "func": record.funcName,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exc"] = self.formatException(record.exc_info)
+        return json.dumps(entry, default=str)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a JSON-to-stderr logger. Pass the service name (e.g. 'knowledge-service')."""
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(_JsonFormatter())
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+    return logger
+```
+
+- [ ] **Step 2: Replace services/shared/nizam_shared/base.py**
+
+Reads `POSTGRES_DSN` from env. This env var is set per-service in each unit's `ExecStart` wrapper (see Task 5 and individual service tasks). The rest of ServiceBase (db context manager, Redis client) is unchanged.
+
+```python
+import os
+from contextlib import contextmanager
+from typing import Generator
+
+import psycopg
+import redis
+from psycopg.rows import dict_row
+
+from .audit import AuditLogger
+from .logger import get_logger
+
+
+class ServiceBase:
+    """Common wiring for all nizam-os MCP services.
+
+    Provides:
+    - JSON structured logger (stderr → systemd → logs/<service>.log)
+    - psycopg3 connection factory (dict rows, auto commit/rollback)
+    - AuditLogger writing to audit.log
+    - Redis client for short-lived caching
+
+    Requires env vars:
+      POSTGRES_DSN  — full PostgreSQL DSN for this service's role
+                      Set via ExecStart wrapper in the systemd unit.
+      REDIS_URL     — optional, defaults to redis://localhost:6379/0
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.logger = get_logger(name)
+
+        self.dsn = os.environ["POSTGRES_DSN"]
+        self.audit = AuditLogger(self.dsn)
+
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        self.cache: redis.Redis = redis.from_url(redis_url, decode_responses=True)
+
+    @contextmanager
+    def db(self) -> Generator[psycopg.Connection, None, None]:
+        """Yield a psycopg3 connection with dict row factory.
+
+        Commits on clean exit, rolls back on exception.
+        """
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            yield conn
+```
+
+- [ ] **Step 3: Replace services/shared/nizam_shared/audit.py**
+
+Writes to `audit.log` with the generic schema. Opens its own autocommit connection so audit records survive caller transaction rollbacks.
+
+```python
+import psycopg
+
+
+class AuditLogger:
+    """Write append-only audit records to audit.log."""
+
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    def log(
+        self,
+        *,
+        actor: str,
+        schema_name: str,
+        table_name: str,
+        operation: str,
+        row_id: int | None = None,
+        before_state: dict | None = None,
+        after_state: dict | None = None,
+    ) -> None:
+        """Insert one audit record.
+
+        Opens its own autocommit connection — commits even if caller's
+        transaction rolls back. operation must be INSERT, UPDATE, or DELETE.
+        """
+        with psycopg.connect(self._dsn, autocommit=True) as conn:
+            conn.execute(
+                """
+                INSERT INTO audit.log
+                    (schema_name, table_name, operation, actor,
+                     row_id, before_state, after_state)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    schema_name,
+                    table_name,
+                    operation,
+                    actor,
+                    row_id,
+                    before_state,
+                    after_state,
+                ),
+            )
+```
+
+- [ ] **Step 4: Verify services/shared/nizam_shared/__init__.py is unchanged**
+
+```python
+from .base import ServiceBase
+from .logger import get_logger
+from .audit import AuditLogger
+
+__all__ = ["ServiceBase", "get_logger", "AuditLogger"]
+```
+
+The `pyproject.toml` requires no changes (psycopg[binary]>=3.2, redis>=5.0 are correct).
+
+- [ ] **Step 5: Syntax-check all three files**
+
+```bash
+python3 -c "
+import ast, pathlib
+for f in ['services/shared/nizam_shared/logger.py',
+          'services/shared/nizam_shared/base.py',
+          'services/shared/nizam_shared/audit.py']:
+    ast.parse(pathlib.Path(f).read_text())
+    print(f'{f}: OK')
+"
+# Expected: 3 OK lines
+```
+
+---
+
+## Task 5: LiteLLM proxy config + systemd unit
+
+**Files:**
+- Create: `config/litellm.yaml`
+- Create: `systemd/litellm-proxy.service`
+
+- [ ] **Step 1: Create config/litellm.yaml**
+
+```yaml
+model_list:
+  # Explicit entry for cost tracking on embedding calls.
+  # Without this, the wildcard match cannot resolve model-specific pricing
+  # for gemini-embedding-2 and LiteLLM logs $0 spend for embeddings.
+  - model_name: "google/gemini-embedding-2"
+    litellm_params:
+      model: "openrouter/google/gemini-embedding-2"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
+  - model_name: "*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
+
+litellm_settings:
+  # Exact-match Redis cache — reuses the already-running Redis instance.
+  cache: true
+  cache_params:
+    type: redis
+    host: localhost
+    port: 6379
+    ttl: 3600
+    supported_call_types:
+      - acompletion
+      - completion
+  drop_params: false
+  request_timeout: 600
+  # Pass caller-supplied 'user' field through to SpendLogs.end_user.
+  # Hermes passes the profile name as 'user' — this enables per-agent spend tracking.
+  store_end_user: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DB_URL
+  disable_spend_logs: false
+  # Start even if DB is momentarily unavailable — spend logs catch up once DB is reachable.
+  allow_requests_on_db_unavailable: true
+```
+
+- [ ] **Step 2: Create systemd/litellm-proxy.service**
+
+```ini
+[Unit]
+Description=LiteLLM Proxy — OpenRouter gateway with spend tracking
+Documentation=https://docs.litellm.ai
+After=network.target postgresql.service redis-server.service
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=vazir
+Group=vazir
+WorkingDirectory=/home/vazir/nizam-os
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/litellm \
+    --config /home/vazir/nizam-os/config/litellm.yaml \
+    --port 4000 \
+    --num_workers 1
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/vazir/nizam-os/logs/litellm-proxy.log
+StandardError=append:/home/vazir/nizam-os/logs/litellm-proxy.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 3: Verify**
+
+```bash
+python3 -c "import yaml; yaml.safe_load(open('config/litellm.yaml'))" && \
+  echo "litellm.yaml: valid YAML"
+# Expected: litellm.yaml: valid YAML
+```
+
+---
+
+## Task 6: Inventory watcher
+
+**Files:**
+- Create: `scripts/generate-software-inventory.sh`
+- Create: `scripts/generate-services-inventory.sh`
+- Create: `scripts/watch-inventory.sh`
+- Create: `inventory/tracked-services.txt`
+- Create: `systemd/watcher-inventory.service`
+- Create: `systemd/watcher-inventory.timer`
+
+- [ ] **Step 1: Create scripts/generate-software-inventory.sh**
+
+```bash
+#!/usr/bin/env bash
+# Print installed apt packages and local binaries to stdout.
+# Piped to inventory/software.txt by watch-inventory.sh.
+set -euo pipefail
+
+echo "=== APT PACKAGES ==="
+apt-mark showmanual | while read -r pkg; do
+    dpkg-query -W -f='${Package} | ${Version}\n' "$pkg" 2>/dev/null
+done | sort
+
+echo ""
+echo "=== LOCAL BINARIES ==="
+find /usr/local/bin -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort
+
+if [ -d "$HOME/.local/bin" ]; then
+    find "$HOME/.local/bin" -maxdepth 1 -type f -printf '%f\n' | sort
+fi
+```
+
+- [ ] **Step 2: Create scripts/generate-services-inventory.sh**
+
+```bash
+#!/usr/bin/env bash
+# Print tracked service statuses to stdout (one line per service).
+# Piped to inventory/services.txt by watch-inventory.sh.
+# Format: <service> | system|user|- | active|inactive|not-found
+set -euo pipefail
+
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+
+TRACKED="$HOME/nizam-os/inventory/tracked-services.txt"
+
+[ -f "$TRACKED" ] || {
+    echo "Missing tracked-services.txt" >&2
+    exit 1
+}
+
+service_status() {
+    local svc="$1"
+    local status
+
+    if systemctl --user list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "^$svc"; then
+        status=$(systemctl --user is-active "$svc" 2>/dev/null || true)
+        printf '%s | user | %s\n' "$svc" "${status:-inactive}"
+    elif systemctl list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "^$svc"; then
+        status=$(systemctl is-active "$svc" 2>/dev/null || true)
+        printf '%s | system | %s\n' "$svc" "${status:-inactive}"
+    else
+        printf '%s | - | not-found\n' "$svc"
+    fi
+}
+
+grep -vE '^\s*#|^\s*$' "$TRACKED" | while read -r svc; do
+    service_status "$svc"
+done | sort
+```
+
+- [ ] **Step 3: Create scripts/watch-inventory.sh**
+
+```bash
+#!/usr/bin/env bash
+# Detect software + service inventory changes and notify via Discord webhook.
+# Runs hourly via watcher-inventory.timer.
+# On first run, writes baseline and exits silently.
+# On subsequent runs, diffs against baseline; POSTs diff to webhook if changed.
+set -euo pipefail
+
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="watch-inventory"
+source "$NIZAM_OS/scripts/_log.sh"
+
+BASE="$NIZAM_OS/inventory"
+mkdir -p "$BASE"
+
+SOFTWARE="$BASE/software.txt"
+SERVICES="$BASE/services.txt"
+SOFTWARE_HASH="$BASE/software.sha256"
+SERVICES_HASH="$BASE/services.sha256"
+DIFF_FILE="$BASE/last.diff"
+
+TMP_SOFTWARE=$(mktemp)
+TMP_SERVICES=$(mktemp)
+trap 'rm -f "$TMP_SOFTWARE" "$TMP_SERVICES"' EXIT
+
+"$NIZAM_OS/scripts/generate-software-inventory.sh" > "$TMP_SOFTWARE"
+"$NIZAM_OS/scripts/generate-services-inventory.sh" > "$TMP_SERVICES"
+
+SOFTWARE_NEW_HASH=$(sha256sum "$TMP_SOFTWARE" | awk '{print $1}')
+SERVICES_NEW_HASH=$(sha256sum "$TMP_SERVICES" | awk '{print $1}')
+
+if [ ! -f "$SOFTWARE" ]; then
+    # First run — write baseline, do not notify
+    cp "$TMP_SOFTWARE" "$SOFTWARE"
+    cp "$TMP_SERVICES" "$SERVICES"
+    echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
+    echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
+    log_info "baseline written"
+    exit 0
+fi
+
+SOFTWARE_OLD_HASH=$(cat "$SOFTWARE_HASH")
+SERVICES_OLD_HASH=$(cat "$SERVICES_HASH")
+
+if [ "$SOFTWARE_NEW_HASH" = "$SOFTWARE_OLD_HASH" ] && \
+   [ "$SERVICES_NEW_HASH" = "$SERVICES_OLD_HASH" ]; then
+    exit 0
+fi
+
+{
+    echo "=== SOFTWARE CHANGES ==="
+    diff -u "$SOFTWARE" "$TMP_SOFTWARE" || true
+    echo ""
+    echo "=== SERVICE CHANGES ==="
+    diff -u "$SERVICES" "$TMP_SERVICES" || true
+} > "$DIFF_FILE"
+
+cp "$TMP_SOFTWARE" "$SOFTWARE"
+cp "$TMP_SERVICES" "$SERVICES"
+echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
+echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
+
+log_info "inventory changed"
+
+ENV_FILE="$NIZAM_OS/secrets/nizam.env"
+if [ -f "$ENV_FILE" ]; then
+    # shellcheck source=/dev/null
+    set -a; source "$ENV_FILE"; set +a
+fi
+
+if [ -n "${DISCORD_WEBHOOK_LOGS:-}" ]; then
+    curl -s \
+        -F "payload_json={\"content\":\"Inventory changed on nizam-vps. Diff attached.\"}" \
+        -F "file=@${DIFF_FILE};filename=inventory.diff" \
+        "$DISCORD_WEBHOOK_LOGS" > /dev/null
+fi
+```
+
+- [ ] **Step 4: Create inventory/tracked-services.txt**
+
+Phase 1 subset only. Hermes gateway/profile-watcher services added in Phase 2.
+
+```
+# Infrastructure (from nizam-dotfiles)
+cron.service
+fail2ban.service
+ufw.service
+unattended-upgrades.service
+ssh.socket
+grafana-server.service
+postgresql.service
+prometheus-node-exporter.service
+prometheus.service
+redis-server.service
+tailscaled.service
+
+# Nizam-OS Phase 1 — log aggregation
+loki.service
+promtail.service
+
+# Nizam-OS Phase 1 — LLM + metrics
+litellm-proxy.service
+watcher-env.service
+watcher-inventory.timer
+metrics-llm.timer
+metrics-services.timer
+metrics-toolcalls.timer
+```
+
+- [ ] **Step 5: Create systemd/watcher-inventory.service**
+
+```ini
+[Unit]
+Description=Generate services and software inventory diff
+
+[Service]
+Type=oneshot
+User=vazir
+ExecStart=/home/vazir/nizam-os/scripts/watch-inventory.sh
+StandardOutput=append:/home/vazir/nizam-os/logs/watcher-inventory.log
+StandardError=append:/home/vazir/nizam-os/logs/watcher-inventory.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 6: Create systemd/watcher-inventory.timer**
+
+```ini
+[Unit]
+Description=Run inventory watcher hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+- [ ] **Step 7: Verify**
+
+```bash
+bash -n scripts/generate-software-inventory.sh && echo "generate-software: OK"
+bash -n scripts/generate-services-inventory.sh && echo "generate-services: OK"
+bash -n scripts/watch-inventory.sh && echo "watch-inventory: OK"
+ls inventory/tracked-services.txt && echo "tracked-services.txt: OK"
+# Expected: 4 OK lines
+```
+
+---
+
+## Task 7: Metrics collection scripts + units
+
+**Files:**
+- Create: `scripts/metrics-llm.py`
+- Create: `systemd/metrics-llm.service`
+- Create: `systemd/metrics-llm.timer`
+- Create: `scripts/metrics-services.sh`
+- Create: `systemd/metrics-services.service`
+- Create: `systemd/metrics-services.timer`
+- Create: `scripts/metrics-toolcalls.py`
+- Create: `systemd/metrics-toolcalls.service`
+- Create: `systemd/metrics-toolcalls.timer`
+
+All three write to `/var/lib/prometheus/node-exporter/nizam-*.prom` (created by `foundation.sh`). Prometheus node-exporter picks them up via its textfile collector.
+
+- [ ] **Step 1: Create scripts/metrics-llm.py**
+
+Runs every 60s. Queries LiteLLM `/spend/logs` API and writes cumulative counters + daily gauges. Uses inline script metadata so `uv run` installs deps automatically.
+
+```python
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["requests", "redis"]
+# ///
+"""
+LLM metrics textfile writer for Prometheus node-exporter.
+Runs every 60s via metrics-llm.timer.
+
+Metrics written:
+  Counters (cumulative):
+    nizam_llm_requests_total{model,provider,profile}
+    nizam_llm_input_tokens_total{model,provider,profile}
+    nizam_llm_output_tokens_total{model,provider,profile}
+    nizam_llm_cache_read_tokens_total{model,profile}
+    nizam_llm_cache_creation_tokens_total{model,profile}
+    nizam_llm_spend_usd_total{model,provider,profile}
+
+  Gauges (pre-aggregated for stat panels):
+    nizam_llm_requests_today
+    nizam_llm_input_tokens_today
+    nizam_llm_output_tokens_today
+    nizam_llm_spend_usd_today
+    nizam_llm_spend_usd_this_month
+    nizam_llm_cache_hit_rate_today        (0.0–1.0)
+    nizam_llm_cache_savings_usd_today
+    nizam_llm_cache_savings_usd_total
+    nizam_llm_avg_latency_ms_1h{model}
+
+  Status:
+    nizam_llm_proxy_up
+"""
+
+import json
+import logging
+import os
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+import redis
+import requests
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-5s] [metrics-llm] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+log = logging.getLogger("metrics-llm")
+
+OUT = Path("/var/lib/prometheus/node-exporter/nizam-llm.prom")
+TMP = OUT.with_suffix(".prom.tmp")
+
+LITELLM_URL = "http://localhost:4000"
+LITELLM_KEY = os.environ.get("LITELLM_MASTER_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+REDIS_PRICE_KEY = "nizam:openrouter:model_prices"
+REDIS_PRICE_TTL = 86400  # 24h
+
+
+def get_redis() -> redis.Redis | None:
+    try:
+        r = redis.from_url(REDIS_URL, socket_connect_timeout=2, decode_responses=True)
+        r.ping()
+        return r
+    except Exception:
+        return None
+
+
+def get_model_prices(r: redis.Redis | None) -> dict:
+    if r is not None:
+        cached = r.get(REDIS_PRICE_KEY)
+        if cached:
+            try:
+                return json.loads(cached)
+            except Exception:
+                pass
+
+    if not OPENROUTER_API_KEY:
+        return {}
+
+    try:
+        resp = requests.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+
+        prices: dict = {}
+        for model in resp.json().get("data", []):
+            model_id = model.get("id", "")
+            if not model_id:
+                continue
+            pricing = model.get("pricing", {})
+
+            def _price(key: str) -> float | None:
+                v = pricing.get(key)
+                if v is None:
+                    return None
+                try:
+                    f = float(v)
+                    return f if f > 0 else None
+                except (TypeError, ValueError):
+                    return None
+
+            prices[model_id] = {
+                "prompt": _price("prompt"),
+                "completion": _price("completion"),
+                "cache_read": _price("cache_read"),
+                "cache_creation": _price("cache_creation"),
+            }
+
+        if r is not None:
+            try:
+                r.set(REDIS_PRICE_KEY, json.dumps(prices), ex=REDIS_PRICE_TTL)
+            except Exception:
+                pass
+
+        return prices
+    except Exception:
+        return {}
+
+
+def label(**kwargs: str) -> str:
+    parts = [f'{k}="{v}"' for k, v in kwargs.items() if v]
+    return "{" + ",".join(parts) + "}" if parts else ""
+
+
+def check_proxy_up() -> int:
+    try:
+        r = requests.get(f"{LITELLM_URL}/health/liveliness", timeout=3)
+        return 1 if r.status_code == 200 else 0
+    except Exception:
+        return 0
+
+
+def clean_model(raw: str) -> str:
+    while raw.startswith("openrouter/"):
+        raw = raw[len("openrouter/"):]
+    return raw
+
+
+def provider_from_model(model: str) -> str:
+    parts = model.split("/")
+    return parts[0] if len(parts) >= 2 else "unknown"
+
+
+def parse_time(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.rstrip("Z")).replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def write_fallback(proxy_up: int) -> None:
+    lines = [
+        "# HELP nizam_llm_proxy_up LiteLLM proxy reachable (1=yes, 0=no)",
+        "# TYPE nizam_llm_proxy_up gauge",
+        f"nizam_llm_proxy_up {proxy_up}",
+    ]
+    TMP.write_text("\n".join(lines) + "\n")
+    TMP.replace(OUT)
+    log.warning("proxy_up=%d — wrote fallback only", proxy_up)
+
+
+def fetch_logs() -> list | None:
+    if not LITELLM_KEY:
+        log.error("LITELLM_MASTER_KEY not set")
+        return None
+    try:
+        resp = requests.get(
+            f"{LITELLM_URL}/spend/logs",
+            params={"limit": 10000},
+            headers={"Authorization": f"Bearer {LITELLM_KEY}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        log.info("fetched %d spend log entries", len(data))
+        return data
+    except Exception as e:
+        log.error("fetch_logs failed: %s", e)
+        return None
+
+
+def main() -> None:
+    proxy_up = check_proxy_up()
+    logs = fetch_logs()
+    if logs is None:
+        write_fallback(proxy_up)
+        return
+
+    now = datetime.now(timezone.utc)
+    today_date = now.date()
+    month_start = today_date.replace(day=1)
+    one_hour_ago = now.timestamp() - 3600
+
+    r = get_redis()
+    model_prices = get_model_prices(r)
+    lines: list[str] = []
+
+    def section(help_text: str, metric_type: str, name: str) -> None:
+        lines.append(f"# HELP {name} {help_text}")
+        lines.append(f"# TYPE {name} {metric_type}")
+
+    totals: dict = defaultdict(lambda: {
+        "requests": 0, "input_tokens": 0, "output_tokens": 0,
+        "spend": 0.0, "cache_read": 0, "cache_create": 0,
+    })
+
+    today_req = today_in = today_out = 0
+    today_spend = 0.0
+    today_cache_hits = 0
+    month_spend = 0.0
+    latency_by_model: dict = defaultdict(list)
+    today_cache_read_by_model: dict = defaultdict(int)
+
+    for entry in logs:
+        model = entry.get("model", "") or ""
+        profile = entry.get("user", "") or "unknown"
+        in_tok = int(entry.get("prompt_tokens") or 0)
+        out_tok = int(entry.get("completion_tokens") or 0)
+
+        litellm_spend = float(entry.get("spend") or 0)
+        if litellm_spend == 0.0 and (in_tok or out_tok):
+            mc = clean_model(model)
+            pricing = model_prices.get(mc) or model_prices.get(model)
+            if pricing:
+                spend = (in_tok * (pricing.get("prompt") or 0.0) +
+                         out_tok * (pricing.get("completion") or 0.0))
+            else:
+                spend = 0.0
+        else:
+            spend = litellm_spend
+
+        meta = entry.get("metadata") or {}
+        usage_obj = meta.get("usage_object") or {}
+        ptd = usage_obj.get("prompt_tokens_details") or {}
+        cache_read = int(ptd.get("cached_tokens") or 0)
+        cache_create = int(ptd.get("cache_write_tokens") or 0)
+
+        key = (model, profile)
+        totals[key]["requests"] += 1
+        totals[key]["input_tokens"] += in_tok
+        totals[key]["output_tokens"] += out_tok
+        totals[key]["spend"] += spend
+        totals[key]["cache_read"] += cache_read
+        totals[key]["cache_create"] += cache_create
+
+        start_ts = parse_time(entry.get("startTime"))
+        end_ts = parse_time(entry.get("endTime"))
+
+        if start_ts:
+            start_date = start_ts.date()
+            if start_date == today_date:
+                today_req += 1
+                today_in += in_tok
+                today_out += out_tok
+                today_spend += spend
+                if cache_read > 0:
+                    today_cache_hits += 1
+                today_cache_read_by_model[model] += cache_read
+            if start_date >= month_start:
+                month_spend += spend
+            if start_ts.timestamp() >= one_hour_ago:
+                dur = entry.get("request_duration_ms")
+                if dur is None and end_ts:
+                    dur = (end_ts.timestamp() - start_ts.timestamp()) * 1000
+                if dur is not None:
+                    latency_by_model[clean_model(model)].append(float(dur))
+
+    section("LiteLLM proxy reachable (1=yes, 0=no)", "gauge", "nizam_llm_proxy_up")
+    lines.append(f"nizam_llm_proxy_up {proxy_up}")
+
+    section("Cumulative LLM request count", "counter", "nizam_llm_requests_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_requests_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['requests']}")
+
+    section("Cumulative input tokens", "counter", "nizam_llm_input_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_input_tokens_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['input_tokens']}")
+
+    section("Cumulative output tokens", "counter", "nizam_llm_output_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_output_tokens_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['output_tokens']}")
+
+    section("Cumulative LLM spend USD", "counter", "nizam_llm_spend_usd_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_spend_usd_total{label(model=mc, provider=provider_from_model(mc), profile=profile)} {v['spend']:.8f}")
+
+    section("Cumulative cache read tokens", "counter", "nizam_llm_cache_read_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_cache_read_tokens_total{label(model=mc, profile=profile)} {v['cache_read']}")
+
+    section("Cumulative cache creation tokens", "counter", "nizam_llm_cache_creation_tokens_total")
+    for (m, profile), v in totals.items():
+        mc = clean_model(m)
+        lines.append(f"nizam_llm_cache_creation_tokens_total{label(model=mc, profile=profile)} {v['cache_create']}")
+
+    section("LLM requests today", "gauge", "nizam_llm_requests_today")
+    lines.append(f"nizam_llm_requests_today {today_req}")
+
+    section("Input tokens today", "gauge", "nizam_llm_input_tokens_today")
+    lines.append(f"nizam_llm_input_tokens_today {today_in}")
+
+    section("Output tokens today", "gauge", "nizam_llm_output_tokens_today")
+    lines.append(f"nizam_llm_output_tokens_today {today_out}")
+
+    section("LLM spend USD today", "gauge", "nizam_llm_spend_usd_today")
+    lines.append(f"nizam_llm_spend_usd_today {today_spend:.6f}")
+
+    section("Cache hit rate today (0.0–1.0)", "gauge", "nizam_llm_cache_hit_rate_today")
+    chr_val = (today_cache_hits / today_req) if today_req > 0 else 0.0
+    lines.append(f"nizam_llm_cache_hit_rate_today {chr_val:.4f}")
+
+    section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
+    lines.append(f"nizam_llm_spend_usd_this_month {month_spend:.6f}")
+
+    all_cache_read_by_model: dict = defaultdict(int)
+    for (m, _profile), v in totals.items():
+        all_cache_read_by_model[m] += v["cache_read"]
+
+    def _calc_savings(cache_by_model: dict) -> float:
+        s = 0.0
+        for m, cr in cache_by_model.items():
+            mc = clean_model(m)
+            pricing = model_prices.get(mc) or model_prices.get(m)
+            if not pricing:
+                continue
+            prompt_price = pricing.get("prompt")
+            cache_read_price = pricing.get("cache_read")
+            if prompt_price is not None and cache_read_price is not None:
+                s += cr * (prompt_price - cache_read_price)
+        return s
+
+    section("Estimated USD saved via provider prompt cache today", "gauge", "nizam_llm_cache_savings_usd_today")
+    lines.append(f"nizam_llm_cache_savings_usd_today {_calc_savings(today_cache_read_by_model):.6f}")
+
+    section("Estimated USD saved via provider prompt cache all time", "gauge", "nizam_llm_cache_savings_usd_total")
+    lines.append(f"nizam_llm_cache_savings_usd_total {_calc_savings(all_cache_read_by_model):.6f}")
+
+    if latency_by_model:
+        section("Average LLM response latency ms over last 1h by model", "gauge", "nizam_llm_avg_latency_ms_1h")
+        for m, durations in latency_by_model.items():
+            avg_ms = sum(durations) / len(durations)
+            lines.append(f'nizam_llm_avg_latency_ms_1h{{model="{m}"}} {avg_ms:.1f}')
+
+    TMP.write_text("\n".join(lines) + "\n")
+    TMP.replace(OUT)
+    OUT.chmod(0o644)
+    log.info(
+        "wrote %d series, today: %d req / %d+%d tok / $%.4f, month: $%.4f",
+        len(totals), today_req, today_in, today_out, today_spend, month_spend,
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 2: Create systemd/metrics-llm.service**
+
+```ini
+[Unit]
+Description=Write LLM spend metrics to Prometheus node-exporter textfile
+
+[Service]
+Type=oneshot
+User=vazir
+EnvironmentFile=/home/vazir/nizam-os/secrets/nizam.env
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-llm.py
+StandardOutput=append:/home/vazir/nizam-os/logs/metrics-llm.log
+StandardError=append:/home/vazir/nizam-os/logs/metrics-llm.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 3: Create systemd/metrics-llm.timer**
+
+```ini
+[Unit]
+Description=Run LLM metrics collector every minute
+
+[Timer]
+OnCalendar=*:0/1
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+- [ ] **Step 4: Create scripts/metrics-services.sh**
+
+Reads `inventory/services.txt` (written by `watcher-inventory`) and emits per-service up/down gauges.
+
+```bash
+#!/usr/bin/env bash
+# Write nizam-services.prom for Prometheus node-exporter.
+# Runs every 5 min via metrics-services.timer.
+# Reads inventory/services.txt written by watcher-inventory.
+set -euo pipefail
+
+NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_NAME="metrics-services"
+source "$NIZAM_OS/scripts/_log.sh"
+
+SERVICES_FILE="$NIZAM_OS/inventory/services.txt"
+OUT="/var/lib/prometheus/node-exporter/nizam-services.prom"
+TMP="${OUT}.tmp"
+
+if [ ! -f "$SERVICES_FILE" ]; then
+    log_error "services.txt not found — skipping (run watcher-inventory.timer first)"
+    exit 1
+fi
+
+total=0
+up=0
+metric_lines=()
+
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    svc=$(echo "$line" | cut -d'|' -f1 | tr -d ' ')
+    type=$(echo "$line" | cut -d'|' -f2 | tr -d ' ')
+    status=$(echo "$line" | cut -d'|' -f3 | tr -d ' ')
+    [[ -z "$svc" ]] && continue
+
+    val=0
+    [[ "$status" == "active" ]] && val=1
+
+    metric_lines+=("nizam_service_up{service=\"${svc}\",type=\"${type}\"} ${val}")
+    total=$((total + 1))
+    up=$((up + val))
+done < "$SERVICES_FILE"
+
+{
+    echo "# HELP nizam_service_up Service is active (1) or not (0)"
+    echo "# TYPE nizam_service_up gauge"
+    for m in "${metric_lines[@]}"; do
+        echo "$m"
+    done
+
+    echo "# HELP nizam_services_total Total number of tracked services"
+    echo "# TYPE nizam_services_total gauge"
+    echo "nizam_services_total ${total}"
+
+    echo "# HELP nizam_services_up_total Number of tracked services currently active"
+    echo "# TYPE nizam_services_up_total gauge"
+    echo "nizam_services_up_total ${up}"
+} > "$TMP"
+
+mv "$TMP" "$OUT"
+chmod 644 "$OUT"
+log_info "wrote ${up}/${total} services up"
+```
+
+- [ ] **Step 5: Create systemd/metrics-services.service**
+
+```ini
+[Unit]
+Description=Write Prometheus metrics for tracked service health
+After=network.target
+
+[Service]
+Type=oneshot
+User=vazir
+ExecStart=/bin/bash /home/vazir/nizam-os/scripts/metrics-services.sh
+StandardOutput=append:/home/vazir/nizam-os/logs/metrics-services.log
+StandardError=append:/home/vazir/nizam-os/logs/metrics-services.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 6: Create systemd/metrics-services.timer**
+
+```ini
+[Unit]
+Description=Run metrics-services every 5 minutes
+Requires=metrics-services.service
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=5min
+Unit=metrics-services.service
+
+[Install]
+WantedBy=timers.target
+```
+
+- [ ] **Step 7: Create scripts/metrics-toolcalls.py**
+
+Parses Hermes agent.log files across all profiles (including rotated files) and counts tool calls.
+
+```python
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
+"""
+Tool call metrics textfile writer for Prometheus node-exporter.
+Runs every 5 min via metrics-toolcalls.timer.
+Parses Hermes agent.log files across all profiles (including rotated .1/.2/.3).
+
+Metrics written:
+  nizam_tool_calls_total{profile,tool}
+  nizam_tool_errors_total{profile,tool}
+  nizam_tool_calls_today{profile,tool}
+  nizam_tool_duration_seconds_total{profile,tool}
+  nizam_tool_output_chars_total{profile,tool}
+  nizam_tool_output_chars_today{profile,tool}
+"""
+
+import logging
+import re
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-5s] [metrics-toolcalls] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+log = logging.getLogger("metrics-toolcalls")
+
+HERMES_PROFILES = Path.home() / ".hermes" / "profiles"
+OUT = Path("/var/lib/prometheus/node-exporter/nizam-toolcalls.prom")
+TMP = OUT.with_suffix(".prom.tmp")
+
+_RE_TOOL = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+"
+    r".*?agent\.tool_executor: [Tt]ool ([\w]+) "
+    r"(completed|returned error)"
+    r".*?\((\d+(?:\.\d+)?)s"
+    r"(?:,\s*(\d+)\s*chars)?"
+)
+
+
+def parse_ts(ts_str: str) -> datetime | None:
+    try:
+        return datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def main() -> None:
+    now = datetime.now(timezone.utc)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    counts: dict = defaultdict(lambda: defaultdict(
+        lambda: {"calls": 0, "errors": 0, "duration_s": 0.0, "chars": 0}
+    ))
+    today: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "chars": 0}))
+
+    if not HERMES_PROFILES.exists():
+        log.warning("~/.hermes/profiles not found — no Hermes profiles yet")
+    else:
+        for profile_dir in sorted(HERMES_PROFILES.iterdir()):
+            if not profile_dir.is_dir():
+                continue
+            profile = profile_dir.name
+            agent_log = profile_dir / "logs" / "agent.log"
+            if not agent_log.exists():
+                continue
+
+            candidates = sorted(
+                agent_log.parent.glob(agent_log.name + "*"),
+                key=lambda p: p.stat().st_mtime,
+            )
+
+            for path in candidates:
+                if not path.is_file():
+                    continue
+                try:
+                    for line in path.read_text(errors="replace").splitlines():
+                        m = _RE_TOOL.match(line)
+                        if not m:
+                            continue
+                        ts = parse_ts(m.group(1))
+                        if ts is None:
+                            continue
+                        tool = m.group(2)
+                        is_error = m.group(3) == "returned error"
+                        duration_s = float(m.group(4))
+                        chars = int(m.group(5)) if m.group(5) else 0
+                        counts[profile][tool]["calls"] += 1
+                        counts[profile][tool]["duration_s"] += duration_s
+                        counts[profile][tool]["chars"] += chars
+                        if is_error:
+                            counts[profile][tool]["errors"] += 1
+                        if ts >= today_midnight:
+                            today[profile][tool]["calls"] += 1
+                            today[profile][tool]["chars"] += chars
+                except Exception as e:
+                    log.warning("failed reading %s: %s", path, e)
+
+    lines: list[str] = []
+
+    def section(help_text: str, metric_type: str, name: str) -> None:
+        lines.append(f"# HELP {name} {help_text}")
+        lines.append(f"# TYPE {name} {metric_type}")
+
+    section("Hermes tool calls across retained logs", "counter", "nizam_tool_calls_total")
+    for profile, tools in sorted(counts.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_calls_total{{profile="{profile}",tool="{tool}"}} {v["calls"]}')
+
+    section("Hermes tool errors across retained logs", "counter", "nizam_tool_errors_total")
+    for profile, tools in sorted(counts.items()):
+        for tool, v in sorted(tools.items()):
+            if v["errors"] > 0:
+                lines.append(f'nizam_tool_errors_total{{profile="{profile}",tool="{tool}"}} {v["errors"]}')
+
+    section("Hermes tool wall time seconds across retained logs", "counter", "nizam_tool_duration_seconds_total")
+    for profile, tools in sorted(counts.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_duration_seconds_total{{profile="{profile}",tool="{tool}"}} {v["duration_s"]:.3f}')
+
+    section("Hermes tool output chars across retained logs", "counter", "nizam_tool_output_chars_total")
+    for profile, tools in sorted(counts.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_output_chars_total{{profile="{profile}",tool="{tool}"}} {v["chars"]}')
+
+    section("Hermes tool calls since midnight UTC", "gauge", "nizam_tool_calls_today")
+    for profile, tools in sorted(today.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_calls_today{{profile="{profile}",tool="{tool}"}} {v["calls"]}')
+
+    section("Hermes tool output chars since midnight UTC", "gauge", "nizam_tool_output_chars_today")
+    for profile, tools in sorted(today.items()):
+        for tool, v in sorted(tools.items()):
+            lines.append(f'nizam_tool_output_chars_today{{profile="{profile}",tool="{tool}"}} {v["chars"]}')
+
+    TMP.write_text("\n".join(lines) + "\n")
+    TMP.replace(OUT)
+    OUT.chmod(0o644)
+
+    total_series = sum(len(t) for t in counts.values())
+    log.info("wrote %d series across %d profiles", total_series, len(counts))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 8: Create systemd/metrics-toolcalls.service**
+
+```ini
+[Unit]
+Description=Write Hermes tool call metrics to Prometheus node-exporter textfile
+
+[Service]
+Type=oneshot
+User=vazir
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-toolcalls.py
+StandardOutput=append:/home/vazir/nizam-os/logs/metrics-toolcalls.log
+StandardError=append:/home/vazir/nizam-os/logs/metrics-toolcalls.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- [ ] **Step 9: Create systemd/metrics-toolcalls.timer**
+
+```ini
+[Unit]
+Description=Run tool call metrics collector every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+- [ ] **Step 10: Verify**
+
+```bash
+python3 -c "
+import ast, pathlib
+for f in ['scripts/metrics-llm.py', 'scripts/metrics-toolcalls.py']:
+    ast.parse(pathlib.Path(f).read_text())
+    print(f'{f}: OK')
+"
+bash -n scripts/metrics-services.sh && echo "metrics-services.sh: OK"
+# Expected: 3 OK lines
+```
+
+---
+
+## Task 8: Config files + symlinks installer + logrotate
+
+**Files:**
+- Create: `config/redis.conf`
+- Create: `config/loki.yaml`
+- Create: `config/promtail.yaml`
+- Create: `config/logrotate.nizam-os`
+- Create: `scripts/setup/install-symlinks.sh`
+
+- [ ] **Step 1: Create config/redis.conf**
+
+The `${REDIS_PASSWORD}` placeholder is substituted by `foundation.sh` using `envsubst` before copying to `/etc/redis/redis.conf`.
+
+```
+bind 127.0.0.1
+requirepass ${REDIS_PASSWORD}
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+```
+
+- [ ] **Step 2: Create config/loki.yaml**
+
+```yaml
+auth_enabled: false
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /var/lib/loki
+  storage:
+    filesystem:
+      chunks_directory: /var/lib/loki/chunks
+      rules_directory: /var/lib/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  reject_old_samples: false
+```
+
+- [ ] **Step 3: Create config/promtail.yaml**
+
+Tails all `logs/*.log` files. The JSON pipeline stage extracts `level` and `service` as Loki labels so logs are queryable by service and severity in Grafana.
+
+```yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: nizam-os
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nizam-os
+          host: nizam-vps
+          __path__: /home/vazir/nizam-os/logs/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            service: service
+      - labels:
+          level:
+          service:
+```
+
+- [ ] **Step 4: Create config/logrotate.nizam-os**
+
+```
+/home/vazir/nizam-os/logs/*.log {
+    su vazir vazir
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 vazir vazir
+}
+```
+
+- [ ] **Step 5: Create scripts/setup/install-symlinks.sh**
+
+Wires all repo files into system locations. Safe to re-run (ln -sf overwrites stale links). Called by `foundation.sh`.
+
+```bash
+#!/usr/bin/env bash
+# Wire all nizam-os systemd files into system locations via symlinks.
+# Run with: sudo bash scripts/setup/install-symlinks.sh
+# Safe to re-run — ln -sf overwrites stale links.
+set -euo pipefail
+
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
+
+# ── Systemd system units ──────────────────────────────────────────────────────
+ln -sf "$NIZAM_OS/systemd/litellm-proxy.service"       /etc/systemd/system/litellm-proxy.service
+ln -sf "$NIZAM_OS/systemd/watcher-env.service"         /etc/systemd/system/watcher-env.service
+ln -sf "$NIZAM_OS/systemd/watcher-inventory.service"   /etc/systemd/system/watcher-inventory.service
+ln -sf "$NIZAM_OS/systemd/watcher-inventory.timer"     /etc/systemd/system/watcher-inventory.timer
+ln -sf "$NIZAM_OS/systemd/metrics-llm.service"         /etc/systemd/system/metrics-llm.service
+ln -sf "$NIZAM_OS/systemd/metrics-llm.timer"           /etc/systemd/system/metrics-llm.timer
+ln -sf "$NIZAM_OS/systemd/metrics-services.service"    /etc/systemd/system/metrics-services.service
+ln -sf "$NIZAM_OS/systemd/metrics-services.timer"      /etc/systemd/system/metrics-services.timer
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.service"   /etc/systemd/system/metrics-toolcalls.service
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.timer"     /etc/systemd/system/metrics-toolcalls.timer
+
+# ── Config files — copied not symlinked (root-owned daemons require root-owned files) ─
+# logrotate
+cp "$NIZAM_OS/config/logrotate.nizam-os" /etc/logrotate.d/nizam-os
+chown root:root /etc/logrotate.d/nizam-os
+chmod 644 /etc/logrotate.d/nizam-os
+
+# Loki + Promtail (apt-installed services read from /etc/<service>/)
+mkdir -p /etc/loki /etc/promtail
+cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yml
+cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yml
+chown root:root /etc/loki/config.yml /etc/promtail/config.yml
+chmod 644 /etc/loki/config.yml /etc/promtail/config.yml
+
+# Redis — substitute password placeholder before copying
+if [ -n "${REDIS_PASSWORD:-}" ]; then
+    envsubst '${REDIS_PASSWORD}' < "$NIZAM_OS/config/redis.conf" > /etc/redis/redis.conf
+    chown redis:redis /etc/redis/redis.conf 2>/dev/null || chown root:root /etc/redis/redis.conf
+    chmod 640 /etc/redis/redis.conf
+    echo "  redis.conf written"
+else
+    echo "  WARNING: REDIS_PASSWORD not set — redis.conf not written. Source nizam.env first."
+fi
+
+systemctl daemon-reload
+echo "  reloaded system daemon"
+
+# ── User units ────────────────────────────────────────────────────────────────
+USER_SYSTEMD="$HOME/.config/systemd/user"
+mkdir -p "$USER_SYSTEMD"
+ln -sf "$NIZAM_OS/systemd/user/hermes-profile-watcher.service" \
+    "$USER_SYSTEMD/hermes-profile-watcher.service"
+echo "  linked user service: hermes-profile-watcher.service"
+echo "  NOTE (Phase 2): systemctl --user daemon-reload && systemctl --user enable --now hermes-profile-watcher"
+
+echo ""
+echo "Symlinks installed:"
+ls -la \
+    /etc/systemd/system/litellm-proxy.service \
+    /etc/systemd/system/watcher-env.service \
+    /etc/systemd/system/watcher-inventory.service \
+    /etc/systemd/system/watcher-inventory.timer \
+    /etc/systemd/system/metrics-llm.service \
+    /etc/systemd/system/metrics-llm.timer \
+    /etc/systemd/system/metrics-services.service \
+    /etc/systemd/system/metrics-services.timer \
+    /etc/systemd/system/metrics-toolcalls.service \
+    /etc/systemd/system/metrics-toolcalls.timer
+
+echo ""
+echo "Grafana manual step (after foundation.sh):"
+echo "  Datasource 1: Prometheus @ http://localhost:9090, uid=nizam-prometheus"
+echo "  Datasource 2: Loki @ http://localhost:3100, uid=nizam-loki"
+echo "  Dashboard: docs/grafana/personal-dashboard.json"
+echo "  Dashboard: docs/grafana/business-dashboard.json"
+```
+
+- [ ] **Step 6: Verify**
+
+```bash
+bash -n scripts/setup/install-symlinks.sh && echo "install-symlinks.sh: OK"
+python3 -c "import yaml; yaml.safe_load(open('config/loki.yaml'))" && echo "loki.yaml: OK"
+python3 -c "import yaml; yaml.safe_load(open('config/promtail.yaml'))" && echo "promtail.yaml: OK"
+ls config/redis.conf config/logrotate.nizam-os && echo "other configs: OK"
+# Expected: 4 OK lines
+```
+
+---
+
+## Task 9: foundation.sh — main entry point
+
+**Files:**
+- Create: `scripts/setup/foundation.sh`
+
+This is the single command that builds Phase 1 from a fresh Ubuntu 24.04 machine (after nizam-dotfiles is done). Every block is idempotent — safe to re-run after partial failure.
+
+- [ ] **Step 1: Create scripts/setup/foundation.sh**
+
+```bash
+#!/usr/bin/env bash
+# Idempotent Phase 1 foundation setup for nizam-os.
+# Prerequisite: ~/nizam-dotfiles/docs/startup-guide.md complete.
+#
+# Rebuild (reusing encrypted creds):
+#   git clone <repo> ~/nizam-os
+#   cp <backup>/nizam-age-key.txt ~/nizam-os/secrets/nizam-age-key.txt
+#   sudo bash ~/nizam-os/scripts/setup/foundation.sh
+#
+# Fresh (new creds):
+#   git clone <repo> ~/nizam-os
+#   age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
+#   cp ~/nizam-os/secrets/nizam.env.example ~/nizam-os/secrets/nizam.env
+#   nano ~/nizam-os/secrets/nizam.env   # fill all 7 values
+#   sudo bash ~/nizam-os/scripts/setup/foundation.sh
+set -euo pipefail
+
+# Logging (runs as root, writes to vazir's logs/)
+VAZIR_HOME="/home/vazir"
+NIZAM_OS="$VAZIR_HOME/nizam-os"
+NIZAM_LOG="$NIZAM_OS/logs/foundation.log"
+mkdir -p "$NIZAM_OS/logs"
+chown -R vazir:vazir "$NIZAM_OS/logs" 2>/dev/null || true
+
+_log() {
+    local level="$1"; shift
+    local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local line="$ts [$level] [foundation] $*"
+    echo "$line"
+    echo "$line" >> "$NIZAM_LOG"
+}
+log_info()  { _log "INFO " "$@"; }
+log_error() { _log "ERROR" "$@" >&2; }
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Run with: sudo bash scripts/setup/foundation.sh" >&2
+    exit 1
+fi
+
+log_info "=== Phase 1 foundation setup ==="
+
+# Step 1: Secrets — detect fresh vs rebuild
+ENC="$NIZAM_OS/secrets/nizam.env.enc"
+ENV="$NIZAM_OS/secrets/nizam.env"
+AGE_KEY="$NIZAM_OS/secrets/nizam-age-key.txt"
+
+if [ -f "$ENC" ] && [ -f "$AGE_KEY" ]; then
+    log_info "Detected encrypted secrets — decrypting nizam.env"
+    sudo -u vazir bash "$NIZAM_OS/scripts/decrypt-env.sh"
+elif [ -f "$ENV" ]; then
+    log_info "Using existing nizam.env (fresh setup path)"
+else
+    log_error "No secrets found."
+    log_error "Rebuild: restore nizam-age-key.txt + nizam.env.enc"
+    log_error "Fresh:   copy nizam.env.example → nizam.env and fill values"
+    exit 1
+fi
+
+# Verify required vars are non-empty
+required_vars=(OPENROUTER_API_KEY LITELLM_MASTER_KEY LITELLM_DB_PASSWORD LITELLM_DB_URL REDIS_URL REDIS_PASSWORD)
+missing=()
+for var in "${required_vars[@]}"; do
+    val=$(grep "^${var}=" "$ENV" 2>/dev/null | cut -d= -f2- || true)
+    [ -z "$val" ] && missing+=("$var")
+done
+
+if [ ${#missing[@]} -gt 0 ]; then
+    log_error "Missing values in nizam.env: ${missing[*]}"
+    log_error "Fill them in and re-run."
+    exit 1
+fi
+
+# Export all vars from nizam.env for this script's use
+set -a
+# shellcheck source=/dev/null
+source "$ENV"
+set +a
+
+log_info "secrets loaded — all required vars present"
+
+# Step 2: System packages
+log_info "Installing system packages"
+apt-get update -q
+apt-get install -y -q \
+    postgresql postgresql-client \
+    redis-server \
+    inotify-tools \
+    gettext-base \
+    age sops
+
+# Step 3: pgvector
+log_info "Installing pgvector"
+apt-get install -y -q postgresql-16-pgvector
+
+# Step 4: ParadeDB (pg_search)
+if ! dpkg -l pg-search-pg16 &>/dev/null; then
+    log_info "Installing ParadeDB pg_search"
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://packagecloud.io/paradedb/paradedb/gpgkey | \
+        gpg --dearmor > /etc/apt/keyrings/paradedb.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/paradedb.gpg] https://packagecloud.io/paradedb/paradedb/ubuntu noble main" \
+        > /etc/apt/sources.list.d/paradedb.list
+    apt-get update -q
+    apt-get install -y -q pg-search-pg16
+else
+    log_info "pg-search-pg16 already installed"
+fi
+
+# Step 5: Redis configuration
+log_info "Configuring Redis"
+envsubst '${REDIS_PASSWORD}' < "$NIZAM_OS/config/redis.conf" > /etc/redis/redis.conf
+chown redis:redis /etc/redis/redis.conf 2>/dev/null || chown root:root /etc/redis/redis.conf
+chmod 640 /etc/redis/redis.conf
+
+systemctl enable redis-server
+systemctl restart redis-server
+log_info "Redis configured and restarted"
+
+# Step 6: Loki + Promtail
+log_info "Installing Loki and Promtail"
+apt-get install -y -q loki promtail
+
+mkdir -p /etc/loki /etc/promtail /var/lib/loki /var/lib/promtail
+cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yml
+cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yml
+# loki and promtail run as their own system users (created by apt package)
+chown loki:loki /var/lib/loki 2>/dev/null || true
+chown root:root /etc/loki/config.yml /etc/promtail/config.yml
+chmod 644 /etc/loki/config.yml /etc/promtail/config.yml
+
+systemctl enable --now loki promtail
+log_info "Loki and Promtail started"
+
+# Step 7: uv + litellm
+log_info "Checking uv"
+if ! sudo -u vazir bash -c 'command -v uv >/dev/null 2>&1'; then
+    log_info "Installing uv"
+    sudo -u vazir bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+fi
+
+log_info "Installing litellm via uv tool"
+sudo -u vazir bash -c \
+    'PATH="$HOME/.local/bin:$PATH" uv tool install "litellm[proxy]"'
+
+# Step 8: PostgreSQL — database, roles, extensions
+log_info "Configuring PostgreSQL"
+systemctl enable postgresql
+systemctl start postgresql
+
+LITELLM_DB_PASSWORD="$LITELLM_DB_PASSWORD" \
+    bash "$NIZAM_OS/scripts/setup/setup-db.sh"
+
+# Step 9: Audit schema migration
+log_info "Running audit schema migration"
+sudo -u postgres psql nizam \
+    -c "\i $NIZAM_OS/db/migrations/001_audit_schema.sql" \
+    2>&1 | grep -v "^$" || true
+# Re-running is safe — CREATE SCHEMA IF NOT EXISTS + CREATE TABLE IF NOT EXISTS
+
+# Step 10: Prometheus textfile directory
+log_info "Creating Prometheus textfile directory"
+mkdir -p /var/lib/prometheus/node-exporter
+chown vazir:vazir /var/lib/prometheus/node-exporter
+
+# Step 11: Wire symlinks (redis.conf requires REDIS_PASSWORD exported)
+log_info "Installing symlinks and config files"
+bash "$NIZAM_OS/scripts/setup/install-symlinks.sh"
+
+# Step 12: Encrypt nizam.env if not already encrypted
+if [ ! -f "$ENC" ]; then
+    log_info "Encrypting nizam.env → nizam.env.enc"
+    sudo -u vazir bash "$NIZAM_OS/scripts/encrypt-env.sh"
+    log_info "nizam.env.enc created — commit this file"
+fi
+
+# Step 13: Enable and start Phase 1 units
+log_info "Enabling Phase 1 systemd units"
+systemctl enable --now \
+    watcher-env.service \
+    watcher-inventory.timer \
+    metrics-llm.timer \
+    metrics-services.timer \
+    metrics-toolcalls.timer
+
+log_info "Starting LiteLLM proxy"
+systemctl enable litellm-proxy.service
+systemctl start litellm-proxy.service
+
+# Step 14: Wait for LiteLLM health
+log_info "Waiting for LiteLLM /health/liveliness (up to 60s)"
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:4000/health/liveliness >/dev/null 2>&1; then
+        log_info "LiteLLM is up"
+        break
+    fi
+    sleep 2
+    if [ "$i" -eq 30 ]; then
+        log_error "LiteLLM did not come up in 60s"
+        log_error "Check: journalctl -u litellm-proxy -n 50"
+        exit 1
+    fi
+done
+
+# Step 15: Wait for Loki health
+log_info "Waiting for Loki /ready (up to 30s)"
+for i in $(seq 1 15); do
+    if curl -sf http://localhost:3100/ready >/dev/null 2>&1; then
+        log_info "Loki is up"
+        break
+    fi
+    sleep 2
+    if [ "$i" -eq 15 ]; then
+        log_error "Loki did not come up in 30s"
+        log_error "Check: journalctl -u loki -n 30"
+        exit 1
+    fi
+done
+
+# Done
+log_info "Phase 1 foundation complete"
+
+cat << 'GRAFANA'
+
+╔══════════════════════════════════════════════╗
+║        MANUAL STEP: Grafana setup           ║
+╚══════════════════════════════════════════════╝
+
+1. Open Grafana: http://<tailscale-ip>:3000
+2. Connections → Data Sources → Add → Prometheus
+     URL: http://localhost:9090
+     UID: nizam-prometheus
+   → Save & Test
+3. Connections → Data Sources → Add → Loki
+     URL: http://localhost:3100
+     UID: nizam-loki
+   → Save & Test
+4. Dashboards → Import → docs/grafana/personal-dashboard.json
+5. Dashboards → Import → docs/grafana/business-dashboard.json
+
+GRAFANA
+
+cat << 'EXIT'
+
+╔══════════════════════════════════════════════╗
+║        Exit criteria — run to verify        ║
+╚══════════════════════════════════════════════╝
+
+# LiteLLM
+curl -s http://localhost:4000/health/liveliness
+# → {"status":"healthy"}
+
+# Redis (substitute actual password)
+source ~/nizam-os/secrets/nizam.env && redis-cli -a "$REDIS_PASSWORD" ping
+# → PONG
+
+# PostgreSQL schemas
+sudo -u postgres psql nizam -c "\dn"
+# → audit and litellm present
+
+# Loki
+curl -s http://localhost:3100/ready
+# → ready
+
+# Secrets file vars
+grep -c "=" ~/nizam-os/secrets/nizam.env
+# → 7
+
+# Metric files (wait 5 min after timer enable)
+ls -la /var/lib/prometheus/node-exporter/nizam-*.prom
+# → 3 files (llm, services, toolcalls)
+
+# All Phase 1 units active
+systemctl is-active \
+    litellm-proxy loki promtail \
+    watcher-env watcher-inventory.timer \
+    metrics-llm.timer metrics-services.timer metrics-toolcalls.timer
+# → all: active
+
+EXIT
+```
+
+- [ ] **Step 2: Verify syntax**
+
+```bash
+bash -n scripts/setup/foundation.sh && echo "foundation.sh: OK"
+# Expected: foundation.sh: OK
+```
+
+---
+
+## Self-Review Checklist
+
+**Spec coverage:**
+
+| Spec section | Covered in |
+|-------------|-----------|
+| Delivery model (fresh vs rebuild) + password gen | Task 9: foundation.sh; Task 1: Step 3 |
+| Secrets (sops+age, watcher, example) | Tasks 1, 2 |
+| nizam.env Phase 1 vars (7 vars, DISCORD_WEBHOOK_LOGS) | Task 1: nizam.env.example |
+| PostgreSQL 16 + pgvector + pg_search | Task 9: Steps 3, 4, 8 |
+| setup-db.sh idempotent | Task 3 |
+| 001_audit_schema.sql | Task 3 |
+| audit.log columns + append-only | Task 3 |
+| Redis config file (config/redis.conf, envsubst) | Task 8: Steps 1, 5 |
+| Loki (port 3100, local storage, config/loki.yaml) | Task 8: Step 2 |
+| Promtail (config/promtail.yaml, JSON pipeline) | Task 8: Step 3 |
+| LiteLLM config (gemini-embedding-2, wildcard, cache, store_end_user) | Task 5 |
+| Uniform logging — Python JSON (service/module/func) | Task 4 |
+| Uniform logging — bash JSON (_log.sh) | Task 2: Step 1 |
+| StandardOutput=append for all units | Tasks 5, 6, 7 |
+| nizam-shared ServiceBase refactor (POSTGRES_DSN) | Task 4 |
+| AuditLogger refactor (audit.log, generic schema) | Task 4 |
+| Systemd units (all 8 Phase 1 units + loki + promtail) | Tasks 5, 6, 7 |
+| install-symlinks.sh (units + redis/loki/promtail configs) | Task 8: Step 5 |
+| logrotate (daily, 14 days, compress) | Task 8: Step 4 |
+| Prometheus textfile dir owned by vazir | Task 9: Step 10 |
+| Loki + Promtail install + health check | Task 9: Steps 6, 15 |
+| Exit criteria (incl. Loki check) | Task 9: Step 1 (printed at end) |
+| Grafana manual steps (Prometheus + Loki datasources) | Task 9: Step 1 (printed at end) |
+| metrics-llm.py | Task 7 |
+| metrics-toolcalls.py | Task 7 |
+| metrics-services.sh | Task 7 |
+| docs/grafana/ for dashboard JSON | Task 1: Step 3 |
+
+**DSN pattern:** `POSTGRES_DSN` env var in ServiceBase, set via ExecStart wrapper in each service's systemd unit. The wrapper pattern looks like:
+```ini
+ExecStart=/bin/sh -c 'POSTGRES_DSN=$POSTGRES_DSN_KNOWLEDGE exec uv run ...'
+```
+This wrapper is NOT included here — it belongs in each service's own phase plan (Phase 4 for knowledge-service, Phase 5 for finance/personal-service). Phase 1 has no MCP services active.
+
+**metrics-toolcalls.service** no longer has `EnvironmentFile` — it parses log files and needs no env vars from `nizam.env`. Removed.
+
+**tracked-services.txt** excludes `hermes-profile-watcher.service` and all `hermes-gateway-*` units — those are Phase 2.
+
+---
+
+## Execution
+
+Plan complete and saved to `docs/plans/001-foundation.md`.
+
+**To execute:** `sudo bash scripts/setup/foundation.sh`
+
+Run from `~/nizam-os/` after the fresh git clone on the new VPS. The script is the plan — no further interpretation needed.
+
+**Phase 2 plan** covers: Hermes install, Discord server + bot tokens, all Hermes profile configs, LiteLLM virtual keys per agent, sudoers entry for Nazim, hermes-profile-watcher user service, hermes gateway services.
