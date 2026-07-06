@@ -170,12 +170,24 @@ StandardError=append:/home/vazir/nizam-os/logs/<service-name>.log
 
 *Python services:*
 ```json
-{"ts":"2026-07-05T12:34:56.789Z","level":"INFO","service":"knowledge-service","module":"ingestion","func":"ingest_url","msg":"fetched URL"}
+{
+  "ts":"2026-07-05T12:34:56.789Z",
+  "level":"INFO",
+  "service":"knowledge-service",
+  "module":"ingestion",
+  "func":"ingest_url",
+  "msg":"fetched URL"
+}
 ```
 
 *Bash scripts (`_log.sh`):*
 ```json
-{"ts":"2026-07-05T12:34:56Z","level":"INFO","service":"watch-inventory","msg":"inventory changed"}
+{
+  "ts":"2026-07-05T12:34:56Z",
+  "level":"INFO",
+  "service":"watch-inventory",
+  "msg":"inventory changed"
+}
 ```
 
 | Field | Python | Bash |
@@ -429,7 +441,7 @@ sudo -u postgres psql nizam -c "\dn"                   # → audit, litellm sche
 curl -s http://localhost:3100/ready                    # → ready
 
 # Secrets
-grep -c "=" ~/nizam-os/secrets/nizam-os.env               # → 7 vars
+grep -c "=" ~/nizam-os/secrets/nizam-os.env            # → 7 vars
 
 # Metric files (wait 5 min after enabling timers)
 ls /var/lib/prometheus/node-exporter/nizam-*.prom      # → 3 files, recent timestamps
