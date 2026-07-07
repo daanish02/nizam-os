@@ -7,7 +7,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="watch-inventory"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 BASE="$NIZAM_OS/inventory"
 mkdir -p "$BASE"

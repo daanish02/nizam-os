@@ -5,7 +5,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="watch-env"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 EXAMPLE_FILE="$NIZAM_OS/secrets/nizam-os.env.example"
@@ -18,7 +18,7 @@ update_example() {
 
 while inotifywait -e close_write "$ENV_FILE"; do
     log_info "encrypting nizam-os.env"
-    "$NIZAM_OS/scripts/encrypt-env.sh"
+    "$NIZAM_OS/scripts/env/encrypt-env.sh"
     log_info "updating .env.example"
     update_example
 done

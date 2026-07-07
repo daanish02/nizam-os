@@ -97,7 +97,7 @@ watch_env_encrypt() {
         [[ "$filename" == ".env" ]] || continue
 
         echo "hermes-profile-watcher: [env→enc] encrypting $profile_name/.env"
-        "$NIZAM_OS/scripts/encrypt-profile-env.sh" "$profile_name"
+        "$NIZAM_OS/scripts/env/encrypt-profile-env.sh" "$profile_name"
     done
 }
 
