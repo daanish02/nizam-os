@@ -10,7 +10,7 @@ set -euo pipefail
 
 NIZAM_OS="$HOME/nizam-os"
 SCRIPT_NAME="encrypt-profile-env"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 PROFILES="$NIZAM_OS/hermes/profiles"
 export SOPS_AGE_KEY_FILE="$NIZAM_OS/secrets/nizam-age-key.txt"
