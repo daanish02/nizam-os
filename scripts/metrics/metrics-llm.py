@@ -23,7 +23,7 @@ Metrics written:
     nizam_llm_output_tokens_today
     nizam_llm_spend_usd_today
     nizam_llm_spend_usd_this_month
-    nizam_llm_cache_hit_rate_today        (0.0–1.0)
+    nizam_llm_cache_hit_rate_today        (0.0-1.0)
     nizam_llm_cache_savings_usd_today
     nizam_llm_cache_savings_usd_total
     nizam_llm_avg_latency_ms_1h{model}
@@ -43,13 +43,11 @@ from pathlib import Path
 import redis
 import requests
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)-5s] [metrics-llm] %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
-log = logging.getLogger("metrics-llm")
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from _log import setup_logging  # noqa: E402
+
+log = setup_logging("metrics-llm")
 
 OUT = Path("/var/lib/prometheus/node-exporter/nizam-llm.prom")
 TMP = OUT.with_suffix(".prom.tmp")
@@ -212,7 +210,7 @@ def main() -> None:
         lines.append(f"# HELP {name} {help_text}")
         lines.append(f"# TYPE {name} {metric_type}")
 
-    # ── Accumulate per-series totals ──────────────────────────────────────────
+    # Accumulate per-series totals
     totals: dict = defaultdict(lambda: {
         "requests": 0, "input_tokens": 0, "output_tokens": 0,
         "spend": 0.0, "cache_read": 0, "cache_create": 0,
@@ -282,11 +280,11 @@ def main() -> None:
                 if dur is not None:
                     latency_by_model[clean_model(model)].append(float(dur))
 
-    # ── Proxy status ──────────────────────────────────────────────────────────
+    # Proxy status
     section("LiteLLM proxy reachable (1=yes, 0=no)", "gauge", "nizam_llm_proxy_up")
     lines.append(f"nizam_llm_proxy_up {proxy_up}")
 
-    # ── Cumulative counters ───────────────────────────────────────────────────
+    # Cumulative counters
     section("Cumulative LLM request count", "counter", "nizam_llm_requests_total")
     for (m, profile), v in totals.items():
         mc = clean_model(m)
@@ -317,7 +315,7 @@ def main() -> None:
         mc = clean_model(m)
         lines.append(f"nizam_llm_cache_creation_tokens_total{label(model=mc, profile=profile)} {v['cache_create']}")
 
-    # ── Today's gauges ────────────────────────────────────────────────────────
+    # Today's gauges
     section("LLM requests today", "gauge", "nizam_llm_requests_today")
     lines.append(f"nizam_llm_requests_today {today_req}")
 
@@ -334,11 +332,11 @@ def main() -> None:
     chr_val = (today_cache_hits / today_req) if today_req > 0 else 0.0
     lines.append(f"nizam_llm_cache_hit_rate_today {chr_val:.4f}")
 
-    # ── Month spend ───────────────────────────────────────────────────────────
+    # Month spend 
     section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
     lines.append(f"nizam_llm_spend_usd_this_month {month_spend:.6f}")
 
-    # ── Cache savings (today + all time) ─────────────────────────────────────
+    # Cache savings (today + all time)
     all_cache_read_by_model: dict = defaultdict(int)
     for (m, _profile), v in totals.items():
         all_cache_read_by_model[m] += v["cache_read"]
@@ -362,7 +360,7 @@ def main() -> None:
     section("Estimated USD saved via provider prompt cache all time", "gauge", "nizam_llm_cache_savings_usd_total")
     lines.append(f"nizam_llm_cache_savings_usd_total {_calc_savings(all_cache_read_by_model):.6f}")
 
-    # ── Avg latency by model (last 1h) ────────────────────────────────────────
+    # Avg latency by model (last 1h) 
     if latency_by_model:
         section("Average LLM response latency ms over last 1h by model", "gauge", "nizam_llm_avg_latency_ms_1h")
         for m, durations in latency_by_model.items():

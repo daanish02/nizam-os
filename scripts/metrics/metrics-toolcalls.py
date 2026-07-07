@@ -23,13 +23,11 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)-5s] [metrics-toolcalls] %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
-log = logging.getLogger("metrics-toolcalls")
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from _log import setup_logging  # noqa: E402
+
+log = setup_logging("metrics-toolcalls")
 
 HERMES_PROFILES = Path.home() / ".hermes" / "profiles"
 OUT = Path("/var/lib/prometheus/node-exporter/nizam-toolcalls.prom")

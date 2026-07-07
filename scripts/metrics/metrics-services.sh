@@ -5,7 +5,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="metrics-services"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 SERVICES_FILE="$NIZAM_OS/inventory/services.txt"
 OUT="/var/lib/prometheus/node-exporter/nizam-services.prom"
