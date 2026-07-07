@@ -103,6 +103,8 @@ Applied to all profiles without exception. Any new profile must include all of t
 | `DISCORD_ALLOWED_USERS` | Only the owner's Discord user ID can interact with any agent |
 | `discord.allowed_channels` | Each agent sees only its own channels |
 | Compression model pinned | Cheap and fast model; prevents cost bleed |
+| `memory.memory_enabled: false`, `memory.user_profile_enabled: false`, `memory.write_approval: true` | Auto-memory disabled on all profiles; enabled per-profile once savework/checkpoint mechanism is operational |
+| `memory` + `skills` in `disabled_toolsets` | Memory and skills toolsets not loaded by default; enabled explicitly per profile |
 
 ### Terminal restrictions
 
