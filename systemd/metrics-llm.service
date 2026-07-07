@@ -5,7 +5,7 @@ Description=Write LLM spend metrics to Prometheus node-exporter textfile
 Type=oneshot
 User=vazir
 EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
-ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-llm.py
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics/metrics-llm.py
 
 [Install]
 WantedBy=multi-user.target
