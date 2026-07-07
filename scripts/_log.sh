@@ -12,11 +12,11 @@ _nizam_log() {
     local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     local escaped_msg="${msg//\\/\\\\}"
     escaped_msg="${escaped_msg//\"/\\\"}"
-    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"service\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
+    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"script\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
     echo "$line"
     echo "$line" >> "$NIZAM_LOG"
 }
 
 log_info()  { _nizam_log "INFO"  "$@"; }
-log_warn()  { _nizam_log "WARN"  "$@"; }
+log_warn()  { _nizam_log "WARNING"  "$@"; }
 log_error() { _nizam_log "ERROR" "$@"; }
