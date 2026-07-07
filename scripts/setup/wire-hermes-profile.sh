@@ -14,7 +14,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_NAME="wire-hermes-profile"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 NIZAM_PROFILES="$NIZAM_OS/hermes/profiles"
 HERMES_PROFILES="$HOME/.hermes/profiles"
@@ -46,7 +46,7 @@ wire_profile() {
     mkdir -p "$n"
     ensure_env_decrypted "$n"
 
-    # ── skills/ and memories/ ────────────────────────────────────────────────
+    # skills/ and memories/ 
     for dir in skills memories; do
         local hs="$h/$dir"
         local ns="$n/$dir"
@@ -74,7 +74,7 @@ wire_profile() {
         fi
     done
 
-    # ── .md / .env / config.yaml in profile root ────────────────────────────
+    # .md / .env / config.yaml in profile root
     while IFS= read -r -d '' f; do
         local base; base=$(basename "$f")
         local np="$n/$base"
