@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the infrastructure layer (PostgreSQL, Redis, LiteLLM, audit schema, nizam-shared refactor, systemd units, observability) that all future phases run on, delivered as one idempotent `scripts/setup/foundation.sh`.
+**Goal:** Build the infrastructure layer (PostgreSQL, Redis, LiteLLM, audit schema, nizam-shared refactor, systemd units, observability) that all future phases run on, delivered as one idempotent `scripts/setup/001-foundation.sh`.
 
-**Architecture:** A single shell script (`foundation.sh`) installs packages, configures services, runs migrations, and wires systemd units — detecting fresh vs rebuild automatically from presence of `secrets/nizam-os.env.enc`. All secrets live in `secrets/nizam-os.env` (age-encrypted at rest via sops). The nizam-shared library is refactored so all MCP services share the same `POSTGRES_DSN` connection pattern via per-service systemd ExecStart wrappers.
+**Architecture:** A single shell script (`001-foundation.sh`) installs packages, configures services, runs migrations, and wires systemd units — detecting fresh vs rebuild automatically from presence of `secrets/nizam-os.env.enc`. All secrets live in `secrets/nizam-os.env` (age-encrypted at rest via sops). The nizam-shared library is refactored so all MCP services share the same `POSTGRES_DSN` connection pattern via per-service systemd ExecStart wrappers.
 
 **Tech Stack:** Ubuntu 24.04, PostgreSQL 16 + pgvector + ParadeDB, Redis 7, LiteLLM (uv tool), sops + age, Python 3.12+, uv, systemd, Prometheus node-exporter textfile collector.
 
 ## Before You Start
 
-Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` is committed before wiping. The Business dashboard is Phase 8 scope and does not exist at Phase 1.
+Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they survive the wipe). Nothing to back up separately — just make sure `docs/grafana/personal-dashboard.json` is committed before wiping. The Business dashboard is in later scope and does not exist at Phase 1.
 
-**Prerequisite:** `~/nizam-dotfiles/docs/001-setup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, node-exporter). Phase 1 builds on top of that baseline.
+**Prerequisite:** `~/nizam-dotfiles/docs/001-setup-guide.md` complete (Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, Prometheus, Grafana, Loki, node-exporter). Phase 1 builds on top of that baseline.
 
 ---
 
@@ -34,23 +34,21 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 
 | File | Purpose |
 |------|---------|
-| `scripts/_log.sh` | Shared bash logging helper (sourced by other scripts) |
-| `scripts/encrypt-env.sh` | Manual: nizam-os.env → nizam-os.env.enc |
-| `scripts/decrypt-env.sh` | Manual: nizam-os.env.enc → nizam-os.env |
-| `scripts/watch-env.sh` | Long-running: auto-encrypt on nizam-os.env close_write |
+| `scripts/shared/_log.sh` | Shared bash logging helper (sourced by other scripts) |
+| `scripts/env/encrypt-env.sh` | Manual: nizam-os.env → nizam-os.env.enc |
+| `scripts/env/decrypt-env.sh` | Manual: nizam-os.env.enc → nizam-os.env |
+| `scripts/watchers/watch-env.sh` | Long-running: auto-encrypt on nizam-os.env close_write |
 | `scripts/generate-software-inventory.sh` | Print apt packages + local bins |
-| `scripts/generate-services-inventory.sh` | Print tracked service statuses |
-| `scripts/watch-inventory.sh` | Diff inventory hourly, notify via webhook |
-| `scripts/metrics-llm.py` | Write nizam-llm.prom (LLM spend metrics) |
-| `scripts/metrics-services.sh` | Write nizam-services.prom (service health) |
-| `scripts/metrics-toolcalls.py` | Write nizam-toolcalls.prom (tool call counts) |
+| `scripts/watchers/watch-inventory.sh` | Diff software inventory hourly, notify via logs webhook |
+| `scripts/metrics/metrics-llm.py` | Write nizam-llm.prom (LLM spend metrics) |
+| `scripts/metrics/metrics-services.sh` | Write nizam-services.prom (service health) |
+| `scripts/metrics/metrics-toolcalls.py` | Write nizam-toolcalls.prom (tool call counts) |
 | `scripts/setup/setup-db.sh` | Idempotent: create nizam DB, svc_litellm role, litellm schema |
 | `scripts/setup/install-symlinks.sh` | Wire repo files → system locations |
-| `scripts/setup/foundation.sh` | **Main entry point** — idempotent Phase 1 setup |
+| `scripts/setup/001-foundation.sh` | **Main entry point** — idempotent Phase 1 setup |
 | `db/migrations/001_audit_schema.sql` | Create audit schema + audit.log table |
 | `secrets/nizam-os.env.example` | Keys-only template (no values) — committed to git |
-| `secrets/.gitignore` | Gitignore nizam-os.env and nizam-age-key.txt |
-| `inventory/tracked-services.txt` | Services monitored by watcher-inventory |
+| `inventory/tracked-services.txt` | Services polled by metrics-services.sh for Prometheus textfile |
 | `config/litellm.yaml` | LiteLLM proxy config |
 | `config/redis.conf` | Redis config (bind, requirepass placeholder, maxmemory) |
 | `config/loki.yaml` | Loki server config (local storage, port 3100) |
@@ -80,18 +78,10 @@ Dashboard JSON files now live in `docs/grafana/` (inside `docs/`, so they surviv
 ## Task 1: Repo skeleton + secrets template
 
 **Files:**
-- Create: `secrets/.gitignore`
 - Create: `secrets/nizam-os.env.example`
 - Create dirs: `logs/`, `db/migrations/`, `inventory/`
 
-- [ ] **Step 1: Create secrets/.gitignore**
-
-```
-nizam-os.env
-nizam-age-key.txt
-```
-
-- [ ] **Step 2: Create secrets/nizam-os.env.example**
+- [ ] **Step 1: Create secrets/nizam-os.env.example**
 
 This is the committed keys-only template. The `watcher-env.service` regenerates this on every encrypt, but include it in the plan so the fresh clone has it before any secrets exist.
 
@@ -99,23 +89,20 @@ This is the committed keys-only template. The `watcher-env.service` regenerates 
 # Phase 1 variables — fill all values in nizam-os.env (never commit nizam-os.env)
 OPENROUTER_API_KEY=
 LITELLM_MASTER_KEY=
-LITELLM_DB_PASSWORD=
+POSTGRES_SVC_LITELLM_PASS=
 LITELLM_DB_URL=
-REDIS_URL=
 REDIS_PASSWORD=
-DISCORD_WEBHOOK_LOGS=
+REDIS_URL=
 ```
 
-> `DISCORD_WEBHOOK_LOGS` is the Discord webhook URL for inventory change notifications → `#logs` channel. Leave empty in Phase 1; fill in Phase 2 after Discord server is created. The watcher-inventory script skips the curl call if the value is empty.
-
-- [ ] **Step 3: Generate passwords + create required directories**
+- [ ] **Step 2: Generate passwords + create required directories**
 
 Generate strong passwords for the three secret values that need them (run before filling nizam-os.env):
 
 ```bash
-openssl rand -base64 32   # → LITELLM_DB_PASSWORD  (svc_litellm PostgreSQL role)
-openssl rand -base64 32   # → REDIS_PASSWORD        (Redis requirepass)
 openssl rand -base64 32   # → LITELLM_MASTER_KEY    (LiteLLM admin key)
+openssl rand -base64 32   # → POSTGRES_SVC_LITELLM_PASS  (svc_litellm PostgreSQL role)
+openssl rand -base64 32   # → REDIS_PASSWORD        (Redis requirepass)
 ```
 
 Create directory structure:
@@ -130,7 +117,6 @@ logs/*.log
 secrets/nizam-os.env
 secrets/nizam-age-key.txt
 inventory/software.txt
-inventory/services.txt
 inventory/*.sha256
 inventory/last.diff
 ```
@@ -141,7 +127,7 @@ inventory/last.diff
 ls secrets/.gitignore secrets/nizam-os.env.example
 # Expected: both files exist
 cat secrets/nizam-os.env.example
-# Expected: 7 KEY= lines, no values
+# Expected: 6 KEY= lines, no values
 ```
 
 ---
@@ -149,22 +135,22 @@ cat secrets/nizam-os.env.example
 ## Task 2: Secrets management scripts + watcher
 
 **Files:**
-- Create: `scripts/_log.sh`
-- Create: `scripts/encrypt-env.sh`
-- Create: `scripts/decrypt-env.sh`
-- Create: `scripts/watch-env.sh`
+- Create: `scripts/shared/_log.sh`
+- Create: `scripts/env/encrypt-env.sh`
+- Create: `scripts/env/decrypt-env.sh`
+- Create: `scripts/watchers/watch-env.sh`
 - Create: `systemd/watcher-env.service`
 
-- [ ] **Step 1: Create scripts/_log.sh**
+- [ ] **Step 1: Create scripts/shared/_log.sh**
 
-Sourced by every one-shot bash script. Set `SCRIPT_NAME` before sourcing. Outputs JSON matching the Python logger format (minus `module`/`func` which don't apply to bash). Promtail parses `level` and `service` labels from the same fields.
+Sourced by every one-shot bash script. Set `SCRIPT_NAME` before sourcing. Outputs JSON with a `script` key (bash logs use `script`, Python service logs use `service` — Promtail extracts both as labels).
 
 ```bash
 #!/usr/bin/env bash
 # Shared logging helper for nizam-os scripts.
-# Usage: SCRIPT_NAME=my-script source scripts/_log.sh
+# Usage: SCRIPT_NAME=my-script source scripts/shared/_log.sh
 # Writes JSON to ~/nizam-os/logs/scripts.log and stdout.
-# Format: {"ts":"...","level":"INFO","service":"watch-inventory","msg":"..."}
+# Format: {"ts":"...","level":"INFO","script":"watch-inventory","msg":"..."}
 
 NIZAM_LOG="${NIZAM_LOG:-$HOME/nizam-os/logs/scripts.log}"
 mkdir -p "$(dirname "$NIZAM_LOG")"
@@ -176,7 +162,7 @@ _nizam_log() {
     # Escape backslashes and double-quotes in msg for valid JSON
     local escaped_msg="${msg//\\/\\\\}"
     escaped_msg="${escaped_msg//\"/\\\"}"
-    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"service\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
+    local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"script\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
     echo "$line"
     echo "$line" >> "$NIZAM_LOG"
 }
@@ -186,12 +172,12 @@ log_warn()  { _nizam_log "WARN"  "$@"; }
 log_error() { _nizam_log "ERROR" "$@"; }
 ```
 
-- [ ] **Step 2: Create scripts/encrypt-env.sh**
+- [ ] **Step 2: Create scripts/env/encrypt-env.sh**
 
 ```bash
 #!/usr/bin/env bash
 # Encrypt nizam-os.env → nizam-os.env.enc using sops + age.
-# Run manually: bash scripts/encrypt-env.sh
+# Run manually: bash scripts/env/encrypt-env.sh
 # Also called by watcher-env.service on every nizam-os.env save.
 set -euo pipefail
 
@@ -208,7 +194,7 @@ sops \
   > "$HOME/nizam-os/secrets/nizam-os.env.enc"
 ```
 
-- [ ] **Step 3: Create scripts/decrypt-env.sh**
+- [ ] **Step 3: Create scripts/env/decrypt-env.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -226,7 +212,7 @@ sops \
   > "$HOME/nizam-os/secrets/nizam-os.env"
 ```
 
-- [ ] **Step 4: Create scripts/watch-env.sh**
+- [ ] **Step 4: Create scripts/watchers/watch-env.sh**
 
 Runs as a long-lived service. On every save of `nizam-os.env`, re-encrypts and regenerates `.env.example`.
 
@@ -238,7 +224,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="watch-env"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 EXAMPLE_FILE="$NIZAM_OS/secrets/nizam-os.env.example"
@@ -253,7 +239,7 @@ log_info "watching $ENV_FILE"
 
 while inotifywait -e close_write "$ENV_FILE"; do
     log_info "encrypting nizam-os.env"
-    "$NIZAM_OS/scripts/encrypt-env.sh"
+    "$NIZAM_OS/scripts/env/encrypt-env.sh"
     log_info "updating .env.example"
     update_example
 done
@@ -268,7 +254,7 @@ Description=Watch nizam-os.env and encrypt on changes
 [Service]
 Type=simple
 User=vazir
-ExecStart=/home/vazir/nizam-os/scripts/watch-env.sh
+ExecStart=/home/vazir/nizam-os/scripts/watchers/watch-env.sh
 Restart=always
 RestartSec=2
 StandardOutput=append:/home/vazir/nizam-os/logs/watcher-env.log
@@ -281,10 +267,10 @@ WantedBy=multi-user.target
 - [ ] **Step 6: Verify**
 
 ```bash
-bash -n scripts/_log.sh && echo "_log.sh: OK"
-bash -n scripts/encrypt-env.sh && echo "encrypt-env.sh: OK"
-bash -n scripts/decrypt-env.sh && echo "decrypt-env.sh: OK"
-bash -n scripts/watch-env.sh && echo "watch-env.sh: OK"
+bash -n scripts/shared/_log.sh && echo "_log.sh: OK"
+bash -n scripts/env/encrypt-env.sh && echo "encrypt-env.sh: OK"
+bash -n scripts/env/decrypt-env.sh && echo "decrypt-env.sh: OK"
+bash -n scripts/watchers/watch-env.sh && echo "watch-env.sh: OK"
 # Expected: all 4 print OK
 ```
 
@@ -298,16 +284,16 @@ bash -n scripts/watch-env.sh && echo "watch-env.sh: OK"
 
 - [ ] **Step 1: Create scripts/setup/setup-db.sh**
 
-Idempotent — safe to re-run. Creates the `nizam` database, `svc_litellm` role, and `litellm` schema. Requires `LITELLM_DB_PASSWORD` in environment (sourced from `nizam-os.env` by `foundation.sh`).
+Idempotent — safe to re-run. Creates the `nizam` database, `svc_litellm` role, and `litellm` schema. Requires `POSTGRES_SVC_LITELLM_PASS` in environment (sourced from `nizam-os.env` by `001-foundation.sh`).
 
 ```bash
 #!/usr/bin/env bash
 # Idempotent PostgreSQL setup for Phase 1.
 # Creates: nizam database, svc_litellm role, litellm schema, pgvector, pg_search.
-# Run via foundation.sh (LITELLM_DB_PASSWORD must be in env).
+# Run via 001-foundation.sh (POSTGRES_SVC_LITELLM_PASS must be in env).
 set -euo pipefail
 
-: "${LITELLM_DB_PASSWORD:?Set LITELLM_DB_PASSWORD before running this script}"
+: "${POSTGRES_SVC_LITELLM_PASS:?Set POSTGRES_SVC_LITELLM_PASS before running this script}"
 
 sudo -u postgres psql <<SQL
 -- Database
@@ -319,9 +305,9 @@ SELECT 'CREATE DATABASE nizam'
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'svc_litellm') THEN
-        CREATE USER svc_litellm WITH PASSWORD '${LITELLM_DB_PASSWORD}';
+        CREATE USER svc_litellm WITH PASSWORD '${POSTGRES_SVC_LITELLM_PASS}';
     ELSE
-        ALTER USER svc_litellm WITH PASSWORD '${LITELLM_DB_PASSWORD}';
+        ALTER USER svc_litellm WITH PASSWORD '${POSTGRES_SVC_LITELLM_PASS}';
     END IF;
 END\$\$;
 
@@ -662,8 +648,7 @@ python3 -c "import yaml; yaml.safe_load(open('config/litellm.yaml'))" && \
 
 **Files:**
 - Create: `scripts/generate-software-inventory.sh`
-- Create: `scripts/generate-services-inventory.sh`
-- Create: `scripts/watch-inventory.sh`
+- Create: `scripts/watchers/watch-inventory.sh`
 - Create: `inventory/tracked-services.txt`
 - Create: `systemd/watcher-inventory.service`
 - Create: `systemd/watcher-inventory.timer`
@@ -690,50 +675,11 @@ if [ -d "$HOME/.local/bin" ]; then
 fi
 ```
 
-- [ ] **Step 2: Create scripts/generate-services-inventory.sh**
+- [ ] **Step 2: Create scripts/watchers/watch-inventory.sh**
 
 ```bash
 #!/usr/bin/env bash
-# Print tracked service statuses to stdout (one line per service).
-# Piped to inventory/services.txt by watch-inventory.sh.
-# Format: <service> | system|user|- | active|inactive|not-found
-set -euo pipefail
-
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
-
-TRACKED="$HOME/nizam-os/inventory/tracked-services.txt"
-
-[ -f "$TRACKED" ] || {
-    echo "Missing tracked-services.txt" >&2
-    exit 1
-}
-
-service_status() {
-    local svc="$1"
-    local status
-
-    if systemctl --user list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "^$svc"; then
-        status=$(systemctl --user is-active "$svc" 2>/dev/null || true)
-        printf '%s | user | %s\n' "$svc" "${status:-inactive}"
-    elif systemctl list-unit-files "$svc" --no-legend 2>/dev/null | grep -q "^$svc"; then
-        status=$(systemctl is-active "$svc" 2>/dev/null || true)
-        printf '%s | system | %s\n' "$svc" "${status:-inactive}"
-    else
-        printf '%s | - | not-found\n' "$svc"
-    fi
-}
-
-grep -vE '^\s*#|^\s*$' "$TRACKED" | while read -r svc; do
-    service_status "$svc"
-done | sort
-```
-
-- [ ] **Step 3: Create scripts/watch-inventory.sh**
-
-```bash
-#!/usr/bin/env bash
-# Detect software + service inventory changes and notify via Discord webhook.
+# Detect software inventory changes and notify via Discord logs webhook.
 # Runs hourly via watcher-inventory.timer.
 # On first run, writes baseline and exits silently.
 # On subsequent runs, diffs against baseline; POSTs diff to webhook if changed.
@@ -741,59 +687,41 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="watch-inventory"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 BASE="$NIZAM_OS/inventory"
 mkdir -p "$BASE"
 
 SOFTWARE="$BASE/software.txt"
-SERVICES="$BASE/services.txt"
 SOFTWARE_HASH="$BASE/software.sha256"
-SERVICES_HASH="$BASE/services.sha256"
 DIFF_FILE="$BASE/last.diff"
 
 TMP_SOFTWARE=$(mktemp)
-TMP_SERVICES=$(mktemp)
-trap 'rm -f "$TMP_SOFTWARE" "$TMP_SERVICES"' EXIT
+trap 'rm -f "$TMP_SOFTWARE"' EXIT
 
 "$NIZAM_OS/scripts/generate-software-inventory.sh" > "$TMP_SOFTWARE"
-"$NIZAM_OS/scripts/generate-services-inventory.sh" > "$TMP_SERVICES"
 
 SOFTWARE_NEW_HASH=$(sha256sum "$TMP_SOFTWARE" | awk '{print $1}')
-SERVICES_NEW_HASH=$(sha256sum "$TMP_SERVICES" | awk '{print $1}')
 
 if [ ! -f "$SOFTWARE" ]; then
-    # First run — write baseline, do not notify
     cp "$TMP_SOFTWARE" "$SOFTWARE"
-    cp "$TMP_SERVICES" "$SERVICES"
     echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
-    echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
     log_info "baseline written"
     exit 0
 fi
 
 SOFTWARE_OLD_HASH=$(cat "$SOFTWARE_HASH")
-SERVICES_OLD_HASH=$(cat "$SERVICES_HASH")
 
-if [ "$SOFTWARE_NEW_HASH" = "$SOFTWARE_OLD_HASH" ] && \
-   [ "$SERVICES_NEW_HASH" = "$SERVICES_OLD_HASH" ]; then
+if [ "$SOFTWARE_NEW_HASH" = "$SOFTWARE_OLD_HASH" ]; then
     exit 0
 fi
 
-{
-    echo "=== SOFTWARE CHANGES ==="
-    diff -u "$SOFTWARE" "$TMP_SOFTWARE" || true
-    echo ""
-    echo "=== SERVICE CHANGES ==="
-    diff -u "$SERVICES" "$TMP_SERVICES" || true
-} > "$DIFF_FILE"
+diff -u "$SOFTWARE" "$TMP_SOFTWARE" > "$DIFF_FILE" || true
 
 cp "$TMP_SOFTWARE" "$SOFTWARE"
-cp "$TMP_SERVICES" "$SERVICES"
 echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
-echo "$SERVICES_NEW_HASH" > "$SERVICES_HASH"
 
-log_info "inventory changed"
+log_info "software inventory changed"
 
 ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 if [ -f "$ENV_FILE" ]; then
@@ -803,18 +731,17 @@ fi
 
 if [ -n "${DISCORD_WEBHOOK_LOGS:-}" ]; then
     curl -s \
-        -F "payload_json={\"content\":\"Inventory changed on nizam-vps. Diff attached.\"}" \
+        -F "payload_json={\"content\":\"Software inventory changed on nizam-vps. Diff attached.\"}" \
         -F "file=@${DIFF_FILE};filename=inventory.diff" \
         "$DISCORD_WEBHOOK_LOGS" > /dev/null
 fi
 ```
 
-- [ ] **Step 4: Create inventory/tracked-services.txt**
+- [ ] **Step 3: Create inventory/tracked-services.txt**
 
 Phase 1 subset only. Hermes gateway/profile-watcher services added in Phase 2.
 
 ```
-# Infrastructure (from nizam-dotfiles)
 cron.service
 fail2ban.service
 ufw.service
@@ -826,12 +753,8 @@ prometheus-node-exporter.service
 prometheus.service
 redis-server.service
 tailscaled.service
-
-# Nizam-OS Phase 1 — log aggregation
 loki.service
 promtail.service
-
-# Nizam-OS Phase 1 — LLM + metrics
 litellm-proxy.service
 watcher-env.service
 watcher-inventory.timer
@@ -840,16 +763,16 @@ metrics-services.timer
 metrics-toolcalls.timer
 ```
 
-- [ ] **Step 5: Create systemd/watcher-inventory.service**
+- [ ] **Step 4: Create systemd/watcher-inventory.service**
 
 ```ini
 [Unit]
-Description=Generate services and software inventory diff
+Description=Generate software inventory diff and notify on change
 
 [Service]
 Type=oneshot
 User=vazir
-ExecStart=/home/vazir/nizam-os/scripts/watch-inventory.sh
+ExecStart=/home/vazir/nizam-os/scripts/watchers/watch-inventory.sh
 StandardOutput=append:/home/vazir/nizam-os/logs/watcher-inventory.log
 StandardError=append:/home/vazir/nizam-os/logs/watcher-inventory.log
 
@@ -857,7 +780,7 @@ StandardError=append:/home/vazir/nizam-os/logs/watcher-inventory.log
 WantedBy=multi-user.target
 ```
 
-- [ ] **Step 6: Create systemd/watcher-inventory.timer**
+- [ ] **Step 5: Create systemd/watcher-inventory.timer**
 
 ```ini
 [Unit]
@@ -871,14 +794,13 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-- [ ] **Step 7: Verify**
+- [ ] **Step 6: Verify**
 
 ```bash
 bash -n scripts/generate-software-inventory.sh && echo "generate-software: OK"
-bash -n scripts/generate-services-inventory.sh && echo "generate-services: OK"
-bash -n scripts/watch-inventory.sh && echo "watch-inventory: OK"
+bash -n scripts/watchers/watch-inventory.sh && echo "watch-inventory: OK"
 ls inventory/tracked-services.txt && echo "tracked-services.txt: OK"
-# Expected: 4 OK lines
+# Expected: 3 OK lines
 ```
 
 ---
@@ -886,19 +808,19 @@ ls inventory/tracked-services.txt && echo "tracked-services.txt: OK"
 ## Task 7: Metrics collection scripts + units
 
 **Files:**
-- Create: `scripts/metrics-llm.py`
+- Create: `scripts/metrics/metrics-llm.py`
 - Create: `systemd/metrics-llm.service`
 - Create: `systemd/metrics-llm.timer`
-- Create: `scripts/metrics-services.sh`
+- Create: `scripts/metrics/metrics-services.sh`
 - Create: `systemd/metrics-services.service`
 - Create: `systemd/metrics-services.timer`
-- Create: `scripts/metrics-toolcalls.py`
+- Create: `scripts/metrics/metrics-toolcalls.py`
 - Create: `systemd/metrics-toolcalls.service`
 - Create: `systemd/metrics-toolcalls.timer`
 
-All three write to `/var/lib/prometheus/node-exporter/nizam-*.prom` (created by `foundation.sh`). Prometheus node-exporter picks them up via its textfile collector.
+All three write to `/var/lib/prometheus/node-exporter/nizam-*.prom` (created by `001-foundation.sh`). Prometheus node-exporter picks them up via its textfile collector.
 
-- [ ] **Step 1: Create scripts/metrics-llm.py**
+- [ ] **Step 1: Create scripts/metrics/metrics-llm.py**
 
 Runs every 60s. Queries LiteLLM `/spend/logs` API and writes cumulative counters + daily gauges. Uses inline script metadata so `uv run` installs deps automatically.
 
@@ -927,7 +849,7 @@ Metrics written:
     nizam_llm_output_tokens_today
     nizam_llm_spend_usd_today
     nizam_llm_spend_usd_this_month
-    nizam_llm_cache_hit_rate_today        (0.0–1.0)
+    nizam_llm_cache_hit_rate_alltime      (0.0–1.0)
     nizam_llm_cache_savings_usd_today
     nizam_llm_cache_savings_usd_total
     nizam_llm_avg_latency_ms_1h{model}
@@ -1226,9 +1148,11 @@ def main() -> None:
     section("LLM spend USD today", "gauge", "nizam_llm_spend_usd_today")
     lines.append(f"nizam_llm_spend_usd_today {today_spend:.6f}")
 
-    section("Cache hit rate today (0.0–1.0)", "gauge", "nizam_llm_cache_hit_rate_today")
-    chr_val = (today_cache_hits / today_req) if today_req > 0 else 0.0
-    lines.append(f"nizam_llm_cache_hit_rate_today {chr_val:.4f}")
+    total_req = sum(v["requests"] for v in totals.values())
+    total_cache_req = sum(1 for v in totals.values() if v["cache_read"] > 0)
+    alltime_chr = (total_cache_req / total_req) if total_req > 0 else 0.0
+    section("All-time cache hit rate (0.0–1.0)", "gauge", "nizam_llm_cache_hit_rate_alltime")
+    lines.append(f"nizam_llm_cache_hit_rate_alltime {alltime_chr:.4f}")
 
     section("LLM spend USD this calendar month", "gauge", "nizam_llm_spend_usd_this_month")
     lines.append(f"nizam_llm_spend_usd_this_month {month_spend:.6f}")
@@ -1285,7 +1209,7 @@ Description=Write LLM spend metrics to Prometheus node-exporter textfile
 Type=oneshot
 User=vazir
 EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
-ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-llm.py
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics/metrics-llm.py
 StandardOutput=append:/home/vazir/nizam-os/logs/metrics-llm.log
 StandardError=append:/home/vazir/nizam-os/logs/metrics-llm.log
 
@@ -1307,7 +1231,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-- [ ] **Step 4: Create scripts/metrics-services.sh**
+- [ ] **Step 4: Create scripts/metrics/metrics-services.sh**
 
 Reads `inventory/services.txt` (written by `watcher-inventory`) and emits per-service up/down gauges.
 
@@ -1320,7 +1244,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_NAME="metrics-services"
-source "$NIZAM_OS/scripts/_log.sh"
+source "$NIZAM_OS/scripts/shared/_log.sh"
 
 SERVICES_FILE="$NIZAM_OS/inventory/services.txt"
 OUT="/var/lib/prometheus/node-exporter/nizam-services.prom"
@@ -1381,7 +1305,7 @@ After=network.target
 [Service]
 Type=oneshot
 User=vazir
-ExecStart=/bin/bash /home/vazir/nizam-os/scripts/metrics-services.sh
+ExecStart=/bin/bash /home/vazir/nizam-os/scripts/metrics/metrics-services.sh
 StandardOutput=append:/home/vazir/nizam-os/logs/metrics-services.log
 StandardError=append:/home/vazir/nizam-os/logs/metrics-services.log
 
@@ -1403,7 +1327,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-- [ ] **Step 7: Create scripts/metrics-toolcalls.py**
+- [ ] **Step 7: Create scripts/metrics/metrics-toolcalls.py**
 
 Parses Hermes agent.log files across all profiles (including rotated files) and counts tool calls.
 
@@ -1571,7 +1495,7 @@ Description=Write Hermes tool call metrics to Prometheus node-exporter textfile
 [Service]
 Type=oneshot
 User=vazir
-ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics-toolcalls.py
+ExecStart=/home/vazir/.local/bin/uv run /home/vazir/nizam-os/scripts/metrics/metrics-toolcalls.py
 StandardOutput=append:/home/vazir/nizam-os/logs/metrics-toolcalls.log
 StandardError=append:/home/vazir/nizam-os/logs/metrics-toolcalls.log
 
@@ -1598,11 +1522,11 @@ WantedBy=timers.target
 ```bash
 python3 -c "
 import ast, pathlib
-for f in ['scripts/metrics-llm.py', 'scripts/metrics-toolcalls.py']:
+for f in ['scripts/metrics/metrics-llm.py', 'scripts/metrics/metrics-toolcalls.py']:
     ast.parse(pathlib.Path(f).read_text())
     print(f'{f}: OK')
 "
-bash -n scripts/metrics-services.sh && echo "metrics-services.sh: OK"
+bash -n scripts/metrics/metrics-services.sh && echo "metrics-services.sh: OK"
 # Expected: 3 OK lines
 ```
 
@@ -1619,7 +1543,7 @@ bash -n scripts/metrics-services.sh && echo "metrics-services.sh: OK"
 
 - [ ] **Step 1: Create config/redis.conf**
 
-The `${REDIS_PASSWORD}` placeholder is substituted by `foundation.sh` using `envsubst` before copying to `/etc/redis/redis.conf`.
+The `${REDIS_PASSWORD}` placeholder is substituted by `001-foundation.sh` using `envsubst` before copying to `/etc/redis/redis.conf`.
 
 ```
 bind 127.0.0.1
@@ -1666,7 +1590,7 @@ limits_config:
 
 - [ ] **Step 3: Create config/promtail.yaml**
 
-Tails all `logs/*.log` files. The JSON pipeline stage extracts `level` and `service` as Loki labels so logs are queryable by service and severity in Grafana.
+Tails all `logs/*.log` files. Python service logs carry a `service` key; bash script logs carry a `script` key. The pipeline extracts both — missing keys produce no label, so each log line gets the label that exists.
 
 ```yaml
 server:
@@ -1693,9 +1617,11 @@ scrape_configs:
           expressions:
             level: level
             service: service
+            script: script
       - labels:
           level:
           service:
+          script:
 ```
 
 - [ ] **Step 4: Create config/logrotate.nizam-os**
@@ -1715,7 +1641,7 @@ scrape_configs:
 
 - [ ] **Step 5: Create scripts/setup/install-symlinks.sh**
 
-Wires all repo files into system locations. Safe to re-run (ln -sf overwrites stale links). Called by `foundation.sh`.
+Wires all repo files into system locations. Safe to re-run (ln -sf overwrites stale links). Called by `001-foundation.sh`.
 
 ```bash
 #!/usr/bin/env bash
@@ -1726,7 +1652,7 @@ set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 
-# ── Systemd system units ──────────────────────────────────────────────────────
+# Systemd system units
 ln -sf "$NIZAM_OS/systemd/litellm-proxy.service"       /etc/systemd/system/litellm-proxy.service
 ln -sf "$NIZAM_OS/systemd/watcher-env.service"         /etc/systemd/system/watcher-env.service
 ln -sf "$NIZAM_OS/systemd/watcher-inventory.service"   /etc/systemd/system/watcher-inventory.service
@@ -1738,7 +1664,7 @@ ln -sf "$NIZAM_OS/systemd/metrics-services.timer"      /etc/systemd/system/metri
 ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.service"   /etc/systemd/system/metrics-toolcalls.service
 ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.timer"     /etc/systemd/system/metrics-toolcalls.timer
 
-# ── Config files — copied not symlinked (root-owned daemons require root-owned files) ─
+# Config files — copied not symlinked (root-owned daemons require root-owned files)
 # logrotate
 cp "$NIZAM_OS/config/logrotate.nizam-os" /etc/logrotate.d/nizam-os
 chown root:root /etc/logrotate.d/nizam-os
@@ -1746,10 +1672,10 @@ chmod 644 /etc/logrotate.d/nizam-os
 
 # Loki + Promtail (apt-installed services read from /etc/<service>/)
 mkdir -p /etc/loki /etc/promtail
-cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yml
-cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yml
-chown root:root /etc/loki/config.yml /etc/promtail/config.yml
-chmod 644 /etc/loki/config.yml /etc/promtail/config.yml
+cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yaml
+cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yaml
+chown root:root /etc/loki/config.yaml /etc/promtail/config.yaml
+chmod 644 /etc/loki/config.yaml /etc/promtail/config.yaml
 
 # Redis — substitute password placeholder before copying
 if [ -n "${REDIS_PASSWORD:-}" ]; then
@@ -1764,13 +1690,13 @@ fi
 systemctl daemon-reload
 echo "  reloaded system daemon"
 
-# ── User units ────────────────────────────────────────────────────────────────
+# User units
 USER_SYSTEMD="$HOME/.config/systemd/user"
 mkdir -p "$USER_SYSTEMD"
-ln -sf "$NIZAM_OS/systemd/user/hermes-profile-watcher.service" \
-    "$USER_SYSTEMD/hermes-profile-watcher.service"
-echo "  linked user service: hermes-profile-watcher.service"
-echo "  NOTE (Phase 2): systemctl --user daemon-reload && systemctl --user enable --now hermes-profile-watcher"
+ln -sf "$NIZAM_OS/systemd/user/watcher-hermes-profile.service" \
+    "$USER_SYSTEMD/watcher-hermes-profile.service"
+echo "  linked user service: watcher-hermes-profile.service"
+echo "  NOTE (Phase 2): systemctl --user daemon-reload && systemctl --user enable --now watcher-hermes-profile"
 
 echo ""
 echo "Symlinks installed:"
@@ -1787,7 +1713,7 @@ ls -la \
     /etc/systemd/system/metrics-toolcalls.timer
 
 echo ""
-echo "Grafana manual step (after foundation.sh):"
+echo "Grafana manual step (after 001-foundation.sh):"
 echo "  Datasource 1: Prometheus @ http://localhost:9090, uid=nizam-prometheus"
 echo "  Datasource 2: Loki @ http://localhost:3100, uid=nizam-loki"
 echo "  Dashboard: docs/grafana/personal-dashboard.json"
@@ -1806,14 +1732,14 @@ ls config/redis.conf config/logrotate.nizam-os && echo "other configs: OK"
 
 ---
 
-## Task 9: foundation.sh — main entry point
+## Task 9: `001-foundation.sh` — main entry point
 
 **Files:**
-- Create: `scripts/setup/foundation.sh`
+- Create: `scripts/setup/001-foundation.sh`
 
 This is the single command that builds Phase 1 from a fresh Ubuntu 24.04 machine (after nizam-dotfiles is done). Every block is idempotent — safe to re-run after partial failure.
 
-- [ ] **Step 1: Create scripts/setup/foundation.sh**
+- [ ] **Step 1: Create scripts/setup/001-foundation.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -1823,14 +1749,14 @@ This is the single command that builds Phase 1 from a fresh Ubuntu 24.04 machine
 # Rebuild (reusing encrypted creds):
 #   git clone <repo> ~/nizam-os
 #   cp <backup>/nizam-age-key.txt ~/nizam-os/secrets/nizam-age-key.txt
-#   sudo bash ~/nizam-os/scripts/setup/foundation.sh
+#   sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 #
 # Fresh (new creds):
 #   git clone <repo> ~/nizam-os
 #   age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
 #   cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
 #   nano ~/nizam-os/secrets/nizam-os.env   # fill all 7 values
-#   sudo bash ~/nizam-os/scripts/setup/foundation.sh
+#   sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 set -euo pipefail
 
 # Logging (runs as root, writes to vazir's logs/)
@@ -1851,7 +1777,7 @@ log_info()  { _log "INFO " "$@"; }
 log_error() { _log "ERROR" "$@" >&2; }
 
 if [ "$EUID" -ne 0 ]; then
-    echo "Run with: sudo bash scripts/setup/foundation.sh" >&2
+    echo "Run with: sudo bash scripts/setup/001-foundation.sh" >&2
     exit 1
 fi
 
@@ -1864,7 +1790,7 @@ AGE_KEY="$NIZAM_OS/secrets/nizam-age-key.txt"
 
 if [ -f "$ENC" ] && [ -f "$AGE_KEY" ]; then
     log_info "Detected encrypted secrets — decrypting nizam-os.env"
-    sudo -u vazir bash "$NIZAM_OS/scripts/decrypt-env.sh"
+    sudo -u vazir bash "$NIZAM_OS/scripts/env/decrypt-env.sh"
 elif [ -f "$ENV" ]; then
     log_info "Using existing nizam-os.env (fresh setup path)"
 else
@@ -1875,7 +1801,7 @@ else
 fi
 
 # Verify required vars are non-empty
-required_vars=(OPENROUTER_API_KEY LITELLM_MASTER_KEY LITELLM_DB_PASSWORD LITELLM_DB_URL REDIS_URL REDIS_PASSWORD)
+required_vars=(OPENROUTER_API_KEY LITELLM_MASTER_KEY POSTGRES_SVC_LITELLM_PASS LITELLM_DB_URL REDIS_URL REDIS_PASSWORD)
 missing=()
 for var in "${required_vars[@]}"; do
     val=$(grep "^${var}=" "$ENV" 2>/dev/null | cut -d= -f2- || true)
@@ -1939,12 +1865,12 @@ log_info "Installing Loki and Promtail"
 apt-get install -y -q loki promtail
 
 mkdir -p /etc/loki /etc/promtail /var/lib/loki /var/lib/promtail
-cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yml
-cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yml
+cp "$NIZAM_OS/config/loki.yaml" /etc/loki/config.yaml
+cp "$NIZAM_OS/config/promtail.yaml" /etc/promtail/config.yaml
 # loki and promtail run as their own system users (created by apt package)
 chown loki:loki /var/lib/loki 2>/dev/null || true
-chown root:root /etc/loki/config.yml /etc/promtail/config.yml
-chmod 644 /etc/loki/config.yml /etc/promtail/config.yml
+chown root:root /etc/loki/config.yaml /etc/promtail/config.yaml
+chmod 644 /etc/loki/config.yaml /etc/promtail/config.yaml
 
 systemctl enable --now loki promtail
 log_info "Loki and Promtail started"
@@ -1965,7 +1891,7 @@ log_info "Configuring PostgreSQL"
 systemctl enable postgresql
 systemctl start postgresql
 
-LITELLM_DB_PASSWORD="$LITELLM_DB_PASSWORD" \
+POSTGRES_SVC_LITELLM_PASS="$POSTGRES_SVC_LITELLM_PASS" \
     bash "$NIZAM_OS/scripts/setup/setup-db.sh"
 
 # Step 9: Audit schema migration
@@ -1987,7 +1913,7 @@ bash "$NIZAM_OS/scripts/setup/install-symlinks.sh"
 # Step 12: Encrypt nizam-os.env if not already encrypted
 if [ ! -f "$ENC" ]; then
     log_info "Encrypting nizam-os.env → nizam-os.env.enc"
-    sudo -u vazir bash "$NIZAM_OS/scripts/encrypt-env.sh"
+    sudo -u vazir bash "$NIZAM_OS/scripts/env/encrypt-env.sh"
     log_info "nizam-os.env.enc created — commit this file"
 fi
 
@@ -2100,8 +2026,8 @@ EXIT
 - [ ] **Step 2: Verify syntax**
 
 ```bash
-bash -n scripts/setup/foundation.sh && echo "foundation.sh: OK"
-# Expected: foundation.sh: OK
+bash -n scripts/setup/001-foundation.sh && echo "001-foundation.sh: OK"
+# Expected: 001-foundation.sh: OK
 ```
 
 ---
@@ -2112,9 +2038,9 @@ bash -n scripts/setup/foundation.sh && echo "foundation.sh: OK"
 
 | Spec section | Covered in |
 |-------------|-----------|
-| Delivery model (fresh vs rebuild) + password gen | Task 9: foundation.sh; Task 1: Step 3 |
+| Delivery model (fresh vs rebuild) + password gen | Task 9: 001-foundation.sh; Task 1: Step 3 |
 | Secrets (sops+age, watcher, example) | Tasks 1, 2 |
-| nizam-os.env Phase 1 vars (7 vars, DISCORD_WEBHOOK_LOGS) | Task 1: nizam-os.env.example |
+| nizam-os.env Phase 1 vars (6 vars) | Task 1: nizam-os.env.example |
 | PostgreSQL 16 + pgvector + pg_search | Task 9: Steps 3, 4, 8 |
 | setup-db.sh idempotent | Task 3 |
 | 001_audit_schema.sql | Task 3 |
@@ -2148,7 +2074,7 @@ This wrapper is NOT included here — it belongs in each service's own phase pla
 
 **metrics-toolcalls.service** no longer has `EnvironmentFile` — it parses log files and needs no env vars from `nizam-os.env`. Removed.
 
-**tracked-services.txt** excludes `hermes-profile-watcher.service` and all `hermes-gateway-*` units — those are Phase 2.
+**tracked-services.txt** excludes `watcher-hermes-profile.service` and all `hermes-gateway-*` units — those are Phase 2.
 
 ---
 
@@ -2156,8 +2082,8 @@ This wrapper is NOT included here — it belongs in each service's own phase pla
 
 Plan complete and saved to `docs/plans/001-foundation.md`.
 
-**To execute:** `sudo bash scripts/setup/foundation.sh`
+**To execute:** `sudo bash scripts/setup/001-foundation.sh`
 
 Run from `~/nizam-os/` after the fresh git clone on the new VPS. The script is the plan — no further interpretation needed.
 
-**Phase 2 plan** covers: Hermes install, Discord server + bot tokens, all Hermes profile configs, LiteLLM virtual keys per agent, sudoers entry for Nazim, hermes-profile-watcher user service, hermes gateway services.
+**Phase 2 plan** covers: Hermes install, Discord server + bot tokens, all Hermes profile configs, LiteLLM virtual keys per agent, sudoers entry for Nazim, watcher-hermes-profile user service, hermes gateway services.

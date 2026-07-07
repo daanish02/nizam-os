@@ -15,7 +15,7 @@ One external backup item must exist, if reusing keys, before proceeding: `secret
 
 ## Delivery model
 
-Phase 1 delivers one entry point: `scripts/setup/foundation.sh`. Running this script produces a working Phase 1 system. The script is idempotent — each block checks state before acting, safe to re-run after a failure.
+Phase 1 delivers one entry point: `scripts/setup/001-foundation.sh`. Running this script produces a working Phase 1 system. The script is idempotent — each block checks state before acting, safe to re-run after a failure.
 
 The only step that stays manual is Grafana dashboard import — Grafana has no stable CLI for this. The script prints the instruction at the end.
 
@@ -24,7 +24,7 @@ The only step that stays manual is Grafana dashboard import — Grafana has no s
 git clone <repo> ~/nizam-os
 cp <backup>/nizam-age-key.txt ~/nizam-os/secrets/nizam-age-key.txt
 # foundation.sh detects the .enc file and decrypts nizam-os.env automatically
-sudo bash ~/nizam-os/scripts/setup/foundation.sh
+sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 ```
 
 **Fresh setup (new credentials):**
@@ -40,7 +40,7 @@ openssl rand -base64 32   # → REDIS_PASSWORD
 # Populate nizam-os.env from template and fill all values
 cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
 nano ~/nizam-os/secrets/nizam-os.env
-sudo bash ~/nizam-os/scripts/setup/foundation.sh
+sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 # foundation.sh detects no .enc and encrypts nizam-os.env after confirming vars are set
 ```
 
@@ -54,7 +54,7 @@ sudo bash ~/nizam-os/scripts/setup/foundation.sh
 - `secrets/nizam-os.env.example` — keys only, no values. Committed. Updated automatically by `watcher-env.service` on every encrypt.
 - `secrets/nizam-age-key.txt` — age private key. Gitignored. Must be backed up externally.
 
-**Encryption tools:** `sops` + `age`. Manual scripts: `scripts/encrypt-env.sh`, `scripts/decrypt-env.sh`.
+**Encryption tools:** `sops` + `age`. Manual scripts: `scripts/env/encrypt-env.sh`, `scripts/env/decrypt-env.sh`.
 
 **Auto-encrypt watcher:** `watcher-env.service` runs `inotifywait` on `nizam-os.env`. On every `close_write`, it re-encrypts to `nizam-os.env.enc` and updates `nizam-os.env.example`. This ensures the committed ciphertext stays current with any edit without requiring a manual step.
 
@@ -93,7 +93,7 @@ Both extensions are enabled in the `nizam` database during Phase 1 setup. Future
 
 **Database:** `nizam` — single database for all schemas across all phases.
 
-**Setup script (`setup-db.sh`):** Creates the `nizam` database, `svc_litellm` role, and `litellm` schema placeholder. Prints the `LITELLM_DB_URL` to add to `nizam-os.env`. Run once during `foundation.sh`.
+**Setup script (`setup-db.sh`):** Creates the `nizam` database, `svc_litellm` role, and `litellm` schema placeholder. Prints the `LITELLM_DB_URL` to add to `nizam-os.env`. Run once during `001-foundation.sh`.
 
 **Roles created in Phase 1:** `svc_litellm` only. All other service roles (`svc_knowledge`, `svc_finance_personal`, etc.) are created in their respective phase migrations.
 
@@ -129,7 +129,7 @@ Installed via apt. Config file: `config/redis.conf` — committed to repo, copie
 
 Four settings in `config/redis.conf`:
 - `bind 127.0.0.1` — localhost only
-- `requirepass <REDIS_PASSWORD>` — placeholder; `foundation.sh` substitutes the actual value from `nizam-os.env` using `envsubst` before copying
+- `requirepass <REDIS_PASSWORD>` — placeholder; `001-foundation.sh` substitutes the actual value from `nizam-os.env` using `envsubst` before copying
 - `maxmemory 256mb` + `maxmemory-policy allkeys-lru` — bounds memory use; evicts least-recently-used keys when full. Safe for a cache workload.
 
 `REDIS_URL` in nizam-os.env includes the password: `redis://:PASSWORD@localhost:6379/0`.
@@ -150,7 +150,7 @@ Key config decisions (documented here, not repeated in the file):
 - `store_end_user: true` — passes Hermes profile name through to `SpendLogs.end_user` for per-agent spend tracking
 - `allow_requests_on_db_unavailable: true` — proxy starts even if DB is momentarily down
 
-**DB initialization:** On first start with a valid `LITELLM_DB_URL`, LiteLLM auto-runs its Prisma migration and creates spend tracking tables in the `litellm` schema. `foundation.sh` starts LiteLLM, waits for `/health/liveliness` to respond, then continues. This confirms the DB migration completed.
+**DB initialization:** On first start with a valid `LITELLM_DB_URL`, LiteLLM auto-runs its Prisma migration and creates spend tracking tables in the `litellm` schema. `001-foundation.sh` starts LiteLLM, waits for `/health/liveliness` to respond, then continues. This confirms the DB migration completed.
 
 **Virtual keys:** Each Hermes profile gets its own LiteLLM virtual key (scoped under the master key) via `setup-litellm-keys.sh`. Deferred to Phase 2 — profiles don't exist yet.
 
@@ -283,15 +283,15 @@ apt-get install -y loki promtail
 - `__path__: /home/vazir/nizam-os/logs/*.log` — watches entire logs directory
 - Pipeline stage: JSON parser extracts `level` and `service`/`script` as labels
 
-**Grafana datasource:** UID `nizam-loki`, URL `http://localhost:3100`. Created manually after `foundation.sh` (same step as nizam-prometheus).
+**Grafana datasource:** UID `nizam-loki`, URL `http://localhost:3100`. Created manually after `001-foundation.sh` (same step as nizam-prometheus).
 
-**Data dir:** `/var/lib/loki/` — created by `foundation.sh`, owned by `loki` system user (installed by apt package).
+**Data dir:** `/var/lib/loki/` — created by `001-foundation.sh`, owned by `loki` system user (installed by apt package).
 
 ---
 
 ## Systemd units
 
-`scripts/setup/install-symlinks.sh` wires all units from the repo into their runtime locations. `foundation.sh` calls this, then enables and starts the Phase 1 subset.
+`scripts/setup/install-symlinks.sh` wires all units from the repo into their runtime locations. `001-foundation.sh` calls this, then enables and starts the Phase 1 subset.
 
 **Units active after Phase 1:**
 
@@ -308,7 +308,7 @@ apt-get install -y loki promtail
 
 User services (`watcher-hermes-profile`, hermes gateways) start in Phase 2.
 
-**node-exporter textfile dir:** `/var/lib/prometheus/node-exporter/` — must be owned by `vazir` so metric scripts can write `.prom` files. Created by `foundation.sh` if missing.
+**node-exporter textfile dir:** `/var/lib/prometheus/node-exporter/` — must be owned by `vazir` so metric scripts can write `.prom` files. Created by `001-foundation.sh` if missing.
 
 ---
 
@@ -323,7 +323,7 @@ Two Grafana dashboards in nizam-os. The nizam-system dashboard is in nizam-dotfi
 | `nizam-prometheus` | Prometheus | `http://localhost:9090` |
 | `nizam-loki` | Loki | `http://localhost:3100` |
 
-**Manual setup (printed by `foundation.sh`):**
+**Manual setup (printed by `001-foundation.sh`):**
 1. Open Grafana at `<tailscale-ip>:3000`
 2. Connections → Data Sources → Add → Prometheus → URL: `http://localhost:9090`, UID: `nizam-prometheus` → Save & Test
 3. Connections → Data Sources → Add → Loki → URL: `http://localhost:3100`, UID: `nizam-loki` → Save & Test

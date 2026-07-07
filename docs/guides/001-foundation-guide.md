@@ -2,9 +2,9 @@
 
 **What this builds:** PostgreSQL, Redis, LiteLLM, Loki, Promtail, audit schema, nizam-shared refactor, systemd units, and Grafana dashboard skeletons. No agents. No Discord.
 
-**Spec:** [docs/specs/001-foundation.md](../specs/001-foundation.md)  
-**Plan:** [docs/plans/001-foundation.md](../plans/001-foundation.md)  
-**Next phase:** [docs/guides/002-hermes-baseline.md](002-hermes-baseline.md)
+**Spec:** [001 Foundation Design](../specs/001-foundation-design.md)  
+**Plan:** [docs/plans/001 Foundation Plan](../plans/001-foundation-plan.md)  
+**Next phase:** [docs/guides/002 Hermes Baseline Guide](002-hermes-baseline-guide.md)
 
 ---
 
@@ -38,14 +38,14 @@ git status secrets/nizam-os.env.enc
 
 If modified: `git add secrets/nizam-os.env.enc && git commit -m "secrets: update encrypted env"`.
 
-**1c. Confirm personal dashboard JSON is in `docs/grafana/`**
+**1c. Confirm personal dashboard JSON is in `grafana/`**
 
 ```bash
-ls docs/grafana/
-# Expected: personal-dashboard.json
+ls grafana/
+# → 001-personal-dashboard.json
 ```
 
-If it doesn't exist yet, export from Grafana UI (Dashboards → ⋮ → Export JSON → Save to file) and commit. The Business dashboard is Phase 8 scope — it does not exist at Phase 1.
+If it doesn't exist yet, export from Grafana UI (Dashboards → ⋮ → Export JSON → Save to file) and commit. The Business dashboard is in later phase.
 
 **1d. Wipe**
 
@@ -70,7 +70,7 @@ cd ~/nizam-os
 # Restore the age key you backed up in Step 1a
 nano ~/nizam-os/secrets/nizam-age-key.txt   # paste key content
 
-# foundation.sh will detect nizam-os.env.enc and decrypt automatically
+# 001-foundation.sh will detect nizam-os.env.enc and decrypt automatically
 ```
 
 **Fresh (new credentials):**
@@ -80,33 +80,32 @@ nano ~/nizam-os/secrets/nizam-age-key.txt   # paste key content
 age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
 
 # Generate strong passwords — run each command separately, copy outputs
-openssl rand -base64 32   # → LITELLM_DB_PASSWORD
-openssl rand -base64 32   # → REDIS_PASSWORD
 openssl rand -base64 32   # → LITELLM_MASTER_KEY
+openssl rand -base64 32   # → POSTGRES_SVC_LITELLM_PASS
+openssl rand -base64 32   # → REDIS_PASSWORD
 
 # Fill nizam-os.env
 cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
 nano ~/nizam-os/secrets/nizam-os.env
 ```
 
-`nizam-os.env` needs 7 values:
+`nizam-os.env` needs 6 values:
 
 | Variable | Where to get it |
 |----------|----------------|
 | `OPENROUTER_API_KEY` | openrouter.ai → Keys |
 | `LITELLM_MASTER_KEY` | generated above |
-| `LITELLM_DB_PASSWORD` | generated above |
-| `LITELLM_DB_URL` | `postgresql://svc_litellm:LITELLM_DB_PASSWORD@localhost:5432/nizam?schema=litellm` |
-| `REDIS_URL` | `redis://:REDIS_PASSWORD@localhost:6379/0` |
+| `POSTGRES_SVC_LITELLM_PASS` | generated above |
+| `LITELLM_DB_URL` | `postgresql://svc_litellm:POSTGRES_SVC_LITELLM_PASS@localhost:5432/nizam?schema=litellm` |
 | `REDIS_PASSWORD` | generated above |
-| `DISCORD_WEBHOOK_LOGS` | leave empty for now — fill in Phase 2 |
+| `REDIS_URL` | `redis://:REDIS_PASSWORD@localhost:6379/0` |
 
 ---
 
-## Step 4 — Run foundation.sh
+## Step 4 — Run 001-foundation.sh
 
 ```bash
-sudo bash ~/nizam-os/scripts/setup/foundation.sh
+sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 ```
 
 Takes 5–10 minutes. The script is idempotent — if it fails partway, fix the error and re-run from the same point.
@@ -131,7 +130,7 @@ Takes 5–10 minutes. The script is idempotent — if it fails partway, fix the 
 
 ## Step 5 — Verify exit criteria
 
-Run after foundation.sh completes:
+Run after 001-foundation.sh completes:
 
 ```bash
 # LiteLLM
@@ -152,7 +151,7 @@ curl -s http://localhost:3100/ready
 
 # Secrets
 grep -c "=" ~/nizam-os/secrets/nizam-os.env
-# → 7
+# → 6
 
 # Metric files (wait 5 min after timers start)
 ls /var/lib/prometheus/node-exporter/nizam-*.prom
@@ -188,15 +187,15 @@ Open Grafana at `http://<tailscale-ip>:3000` (default login: admin/admin — cha
 
 **Dashboards:**
 
-3. Dashboards → New → Import → upload `docs/grafana/personal-dashboard.json`
+3. Dashboards → New → Import → upload `grafana/001-personal-dashboard.json`
 
-> Most panels will show "no data" — that's correct. Infrastructure and LLM panels populate immediately. Finance, habits, and knowledge panels populate in Phases 4–5. The Business dashboard is Phase 8 scope.
+> Most panels will show "no data" — that's correct. Infrastructure and LLM panels populate immediately. Finance, habits, and knowledge panels populate in later phases. The Business dashboard is also later scope.
 
 ---
 
 ## Step 7 — Commit `nizam-os.env.enc`
 
-If this was a fresh setup (new credentials), foundation.sh created a new `nizam-os.env.enc`. Commit it:
+If this was a fresh setup (new credentials), `001-foundation.sh` created a new `nizam-os.env.enc`. Commit it:
 
 ```bash
 cd ~/nizam-os
@@ -235,9 +234,9 @@ systemctl start metrics-llm.service
 journalctl -u metrics-llm -n 20
 ```
 
-**Re-run foundation.sh after partial failure:**
+**Re-run 001-foundation.sh after partial failure:**
 ```bash
-sudo bash ~/nizam-os/scripts/setup/foundation.sh
+sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 # Safe — every block checks state before acting
 ```
 
