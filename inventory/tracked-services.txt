@@ -1,31 +1,8 @@
-# Infrastructure
-cron.service
-fail2ban.service
-ufw.service
-unattended-upgrades.service
-ssh.socket
-grafana-server.service
-postgresql.service
-prometheus-node-exporter.service
-prometheus.service
-redis-server.service
-tailscaled.service
-watcher-env.service
+postgresql
+redis-server
+watcher-env
 watcher-inventory.timer
-
-# Nizam-OS — LLM Gateway
-litellm-proxy.service
+litellm-proxy
 metrics-llm.timer
-
-# Nizam-OS — Service Health Metrics
 metrics-services.timer
 metrics-toolcalls.timer
-
-# Nizam-OS — Hermes Profile Watcher
-hermes-profile-watcher.service
-
-# Nizam-OS — Hermes Gateway
-hermes-gateway-admin.service
-hermes-gateway-assistant.service
-hermes-gateway-curator.service
-hermes-gateway-cos.service
