@@ -7,7 +7,7 @@
 
 ## Prerequisite
 
-Complete [nizam-dotfiles](~/nizam-dotfiles/docs/001-setup-guide.md) machine setup before this phase. That repo covers: Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, zsh, Prometheus, Grafana, node-exporter, and dotfiles security metric timers. Phase 1 builds on top of that baseline — it does not repeat it.
+Complete [nizam-dotfiles](~/nizam-dotfiles/docs/001-setup-guide.md) machine setup before this phase. That repo covers: Ubuntu 24.04, SSH hardening, UFW, fail2ban, Tailscale, zsh, Prometheus, Grafana, Loki, node-exporter, services, and dotfiles security metric timers. Phase 1 builds on top of that baseline — it does not repeat it.
 
 One external backup item must exist, if reusing keys, before proceeding: `secrets/nizam-age-key.txt` (the age private key). Without it, `nizam-os.env.enc` cannot be decrypted. Back this up to a secure external location before any VPS wipe.
 
@@ -33,9 +33,9 @@ git clone <repo> ~/nizam-os
 age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
 
 # Generate strong passwords
-openssl rand -base64 32   # → LITELLM_DB_PASSWORD
-openssl rand -base64 32   # → REDIS_PASSWORD
+openssl rand -base64 32   # → POSTGRES_SVC_LITELLM_PASS
 openssl rand -base64 32   # → LITELLM_MASTER_KEY
+openssl rand -base64 32   # → REDIS_PASSWORD
 
 # Populate nizam-os.env from template and fill all values
 cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
@@ -64,17 +64,18 @@ sudo bash ~/nizam-os/scripts/setup/foundation.sh
 |----------|-------------|---------|
 | `OPENROUTER_API_KEY` | 1 | LiteLLM upstream auth to OpenRouter |
 | `LITELLM_MASTER_KEY` | 1 | LiteLLM admin operations + virtual key parent |
-| `LITELLM_DB_PASSWORD` | 1 | `svc_litellm` PostgreSQL role password |
+| `POSTGRES_SVC_LITELLM_PASS` | 1 | `svc_litellm` PostgreSQL role password |
 | `LITELLM_DB_URL` | 1 | Full PostgreSQL DSN for LiteLLM Prisma (`postgresql://svc_litellm:PASS@localhost:5432/nizam`) |
 | `REDIS_URL` | 1 | `redis://:PASSWORD@localhost:6379/0` |
 | `REDIS_PASSWORD` | 1 | Redis `requirepass` value |
-| `DISCORD_WEBHOOK_LOGS` | 1* | Webhook URL for inventory diff → `#logs` in Discord. Leave empty in Phase 1; fill in Phase 2 after Discord server is created. |
 
 Phase 2+ vars added later to nizam-os.env (not Phase 1):
 - `DISCORD_GUILD_ID`, per-profile `DISCORD_TOKEN` — Phase 2
-- `DISCORD_WEBHOOK_ALERTS` — Phase 2; Grafana alert contact point → `#alerts` in Discord
+- `DISCORD_WEBHOOK_LOGS` — Phase 2; informational notifications (inventory diffs) → `#logs`
+- `DISCORD_WEBHOOK_WARNING` — Phase 2; Grafana warning-severity alerts → `#alerts`
+- `DISCORD_WEBHOOK_CRITICAL` — Phase 2; Grafana critical-severity alerts → `#alerts`
 - `POSTGRES_DSN_KNOWLEDGE`, `POSTGRES_DSN_FINANCE_PERSONAL`, etc. — added by each phase's migration when its service role is created
-- `YOUTUBE_API_KEY`, `YOUTUBE_COOKIES_FILE`, `VAULT_ROOT` — Phase 4 (Noor)
+- `YOUTUBE_API_KEY`, `YOUTUBE_COOKIES_FILE`, `VAULT_ROOT` — Phase 4 (curator)
 
 Per-profile secrets (`DISCORD_TOKEN` per agent, LiteLLM virtual key per agent) are Phase 2 scope — each profile has its own `.env.enc` committed separately.
 
@@ -185,7 +186,7 @@ StandardError=append:/home/vazir/nizam-os/logs/<service-name>.log
 {
   "ts":"2026-07-05T12:34:56Z",
   "level":"INFO",
-  "service":"watch-inventory",
+  "script":"watch-inventory",
   "msg":"inventory changed"
 }
 ```
@@ -194,12 +195,12 @@ StandardError=append:/home/vazir/nizam-os/logs/<service-name>.log
 |-------|--------|------|
 | `ts` | ISO 8601 UTC, ms precision | ISO 8601 UTC, second precision |
 | `level` | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `INFO`/`WARN`/`ERROR` |
-| `service` | ServiceBase `name` arg | `$SCRIPT_NAME` |
+| `service`/`script` | ServiceBase `name` arg | `$SCRIPT_NAME` |
 | `module` | Python `__name__` of caller | absent |
 | `func` | Calling function name | absent |
 | `msg` | Log message | Log message |
 
-Promtail parses both formats — it extracts `level` and `service` as labels for Grafana Loki queries.
+Promtail parses both formats — it extracts `level` and `service`/`script` as labels for Grafana Loki queries.
 
 `logger.py` in `nizam-shared` produces the Python format. All services using `ServiceBase` get compliant logs automatically.
 
@@ -258,7 +259,7 @@ AuditLogger still opens its own autocommit connection — audit records commit e
 
 ## Loki + Promtail
 
-**Purpose:** Loki aggregates all `nizam-os/logs/*.log` files so Grafana can show raw log panels and query by `level` and `service` labels. Promtail is the shipping agent.
+**Purpose:** Loki aggregates all `nizam-os/logs/*.log` files so Grafana can show raw log panels and query by `level` and `service`/`script` labels. Promtail is the shipping agent.
 
 **Installation:** via Grafana apt repo (same repo already added for Grafana itself).
 ```bash
@@ -269,8 +270,8 @@ apt-get install -y loki promtail
 
 | Repo path | System path | Notes |
 |-----------|-------------|-------|
-| `config/loki.yaml` | `/etc/loki/config.yml` | Loki server — local filesystem storage |
-| `config/promtail.yaml` | `/etc/promtail/config.yml` | Tails `logs/*.log`, labels by `level`+`service` |
+| `config/loki.yaml` | `/etc/loki/config.yaml` | Loki server — local filesystem storage |
+| `config/promtail.yaml` | `/etc/promtail/config.yaml` | Tails `logs/*.log`, labels by `level`+`service`/`script` |
 
 **`config/loki.yaml` key settings:**
 - `http_listen_port: 3100` — binds `127.0.0.1` (Grafana reads from here)
@@ -280,9 +281,9 @@ apt-get install -y loki promtail
 **`config/promtail.yaml` key settings:**
 - Pushes to `http://localhost:3100/loki/api/v1/push`
 - `__path__: /home/vazir/nizam-os/logs/*.log` — watches entire logs directory
-- Pipeline stage: JSON parser extracts `level` and `service` as labels
+- Pipeline stage: JSON parser extracts `level` and `service`/`script` as labels
 
-**Grafana datasource:** UID `nizam-loki`, URL `http://localhost:3100`. Created manually after foundation.sh (same step as nizam-prometheus).
+**Grafana datasource:** UID `nizam-loki`, URL `http://localhost:3100`. Created manually after `foundation.sh` (same step as nizam-prometheus).
 
 **Data dir:** `/var/lib/loki/` — created by `foundation.sh`, owned by `loki` system user (installed by apt package).
 
@@ -298,14 +299,14 @@ apt-get install -y loki promtail
 |------|------|---------|
 | `litellm-proxy.service` | system, persistent | LiteLLM on `:4000` |
 | `watcher-env.service` | system, persistent | Auto-encrypt `nizam-os.env` on change |
-| `watcher-inventory.timer` | system, timer (hourly) | Inventory diff → Discord |
+| `watcher-inventory.timer` | system, timer (hourly) | Software inventory diff → Discord |
 | `metrics-llm.timer` | system, timer (1 min) | Write `nizam-llm.prom` |
 | `metrics-services.timer` | system, timer (5 min) | Write `nizam-services.prom` |
 | `metrics-toolcalls.timer` | system, timer (5 min) | Write `nizam-toolcalls.prom` |
 
 **Staggered scheduling:** timers are offset so no two fire at the same wall-clock time. `metrics-services` fires at `:01/:06/:11...`, `metrics-toolcalls` at `:03/:08/:13...`, `watcher-inventory` at `:05` past each hour. Prevents concurrent process startup from spiking memory.
 
-User services (`hermes-profile-watcher`, hermes gateways) start in Phase 2.
+User services (`watcher-hermes-profile`, hermes gateways) start in Phase 2.
 
 **node-exporter textfile dir:** `/var/lib/prometheus/node-exporter/` — must be owned by `vazir` so metric scripts can write `.prom` files. Created by `foundation.sh` if missing.
 
@@ -313,7 +314,7 @@ User services (`hermes-profile-watcher`, hermes gateways) start in Phase 2.
 
 ## Observability
 
-Two Grafana dashboards in nizam-os. The nizam-system dashboard is in nizam-dotfiles (OS health). Phase 1 adds the Personal dashboard. The Business dashboard is Phase 8 scope — added when Raha comes live. Dashboard reading files live in `docs/grafana/`.
+Two Grafana dashboards in nizam-os. The nizam-system dashboard is in nizam-dotfiles (machine health). Phase 1 adds the Personal dashboard. The Business dashboard is in later scope — added when cos comes live. Dashboard reading files live in `grafana/`.
 
 **Datasources required (created manually before import):**
 
@@ -326,36 +327,41 @@ Two Grafana dashboards in nizam-os. The nizam-system dashboard is in nizam-dotfi
 1. Open Grafana at `<tailscale-ip>:3000`
 2. Connections → Data Sources → Add → Prometheus → URL: `http://localhost:9090`, UID: `nizam-prometheus` → Save & Test
 3. Connections → Data Sources → Add → Loki → URL: `http://localhost:3100`, UID: `nizam-loki` → Save & Test
-4. Dashboards → Import → `docs/grafana/personal-dashboard.json`
+4. Dashboards → Import → `grafana/001-personal-dashboard.json`
 
-**Grafana alerts:** Grafana alerting posts to `#alerts` Discord channel via `DISCORD_WEBHOOK_ALERTS` (Phase 2). Alert contact point configured in Grafana UI, not in code.
+**Grafana alerts:** Warning-severity alerts post via `DISCORD_WEBHOOK_WARNING`; critical-severity via `DISCORD_WEBHOOK_CRITICAL` — both to `#alerts` (Phase 2). Setup steps (both provisioning and GUI) in `docs/grafana/001-personal-dashboard.md`.
 
 ---
 
-### Personal Dashboard (`docs/grafana/personal-dashboard.json`)
+### Personal Dashboard (`grafana/001-personal-dashboard.json`)
 
 All panels in one dashboard. Panels that depend on future-phase data show "no data" until that phase is live — that is expected and correct.
 
 **Infrastructure panels (Phase 1 — live immediately):**
 
+> Dashboard panels are iterative — visual panels evolve, get added, or get removed without a spec change. This table is a reference baseline, not a locked contract.
+
 | Panel | Type | Metric / Source | Phase |
 |-------|------|-----------------|-------|
-| LiteLLM proxy up | Stat | `nizam_llm_proxy_up` | 1 |
 | LLM spend today | Stat | `nizam_llm_spend_usd_today` | 1 |
 | LLM spend this month | Stat | `nizam_llm_spend_usd_this_month` | 1 |
-| Cache hit rate today | Gauge | `nizam_llm_cache_hit_rate_today` | 1 |
+| LLM spend all time | Stat | `sum(nizam_llm_spend_usd_total)` | 1 |
+| Cache hit rate (all time) | Gauge | `nizam_llm_cache_hit_rate_alltime` | 1 |
 | Requests today | Stat | `nizam_llm_requests_today` | 1 |
 | Token usage today (in/out) | Stat (2 panels) | `nizam_llm_input_tokens_today`, `nizam_llm_output_tokens_today` | 1 |
+| Input tokens all time | Stat | `sum(nizam_llm_input_tokens_total)` | 1 |
+| Output tokens all time | Stat | `sum(nizam_llm_output_tokens_total)` | 1 |
 | Spend by model (personal agents) | Bar chart | `nizam_llm_spend_usd_total{profile=~"ayah\|noor\|nazim\|rashid"}` | 1 |
 | Avg latency by model (1h) | Time series | `nizam_llm_avg_latency_ms_1h` | 1 |
 | Tool calls today by tool | Bar chart | `nizam_tool_calls_today` (personal profiles) | 1 |
+| Tool output size by tool (today) | Bar chart | `nizam_tool_output_chars_today` (personal profiles) | 1 |
 | Tool error rate | Stat | `nizam_tool_errors_total / nizam_tool_calls_total` | 1 |
 | Services up/down over time | State timeline | `nizam_service_up` | 1 |
 | Services healthy count | Stat | `nizam_services_up_total` | 1 |
 | Log level counts by service | Bar chart | Loki `count_over_time` by `level` label | 1 |
 | Live logs | Logs panel | Loki `{job="nizam-os"}` | 1 |
 
-**Knowledge panels (Phase 4 — Noor):**
+**Knowledge panels (curator):**
 
 | Panel | Type | Source | Phase |
 |-------|------|--------|-------|
@@ -364,21 +370,23 @@ All panels in one dashboard. Panels that depend on future-phase data show "no da
 | Learning heatmap (daily ingestion) | Heatmap | PostgreSQL `knowledge` schema | 4 |
 | Knowledge treemap (by area) | Treemap | PostgreSQL `knowledge` schema | 4 |
 
-**Personal finance panels (Phase 5 — Ayah):**
+**Personal finance panels (assistant):**
 
 | Panel | Type | Source | Phase |
 |-------|------|--------|-------|
+| Total balance across all accounts | Stat | PostgreSQL `finance_personal` (sum) | 5 |
 | Account balances | Stat per account | PostgreSQL `finance_personal` | 5 |
 | Net worth over time | Time series | PostgreSQL `finance_personal` | 5 |
 | Monthly income vs expenses | Bar chart | PostgreSQL `finance_personal` | 5 |
 | Expense by category | Bar chart | PostgreSQL `finance_personal` | 5 |
+| Expense breakdown (L1 category / L2 subcategory) | Sunburst | PostgreSQL `finance_personal` | 5 |
 | Budget utilization | Gauge per category | PostgreSQL `finance_personal` | 5 |
 | Savings fund progress | Gauge per fund | PostgreSQL `finance_personal` | 5 |
 | Cash flow (rolling 30d) | Time series | PostgreSQL `finance_personal` | 5 |
 | Upcoming amortization payments | Table | PostgreSQL `finance_personal` | 5 |
 | Zakat due estimate | Stat | PostgreSQL `finance_personal` (computed) | 5 |
 
-**Personal habits / goals panels (Phase 5 — Ayah):**
+**Personal habits / goals panels (assistant):**
 
 | Panel | Type | Source | Phase |
 |-------|------|--------|-------|
@@ -391,7 +399,7 @@ All panels in one dashboard. Panels that depend on future-phase data show "no da
 
 ### Business Dashboard
 
-Phase 8 scope. Added when Raha (chief of staff) comes live. See Phase 8 spec for panel definitions.
+Later phase. Added when cos comes live. See later phase spec for panel definitions.
 
 ---
 
