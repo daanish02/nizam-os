@@ -12,7 +12,7 @@ Services are independent of agents. Adding capability means building a new servi
 |------|---------|--------|
 | 3000 | Grafana | Observability |
 | 3001 | Langfuse | Observability |
-| 3100 | Loki | Observability |
+| 3100 | Loki | Observability (managed by nizam-dotfiles) |
 | 4000 | LiteLLM proxy | Shared |
 | 8100 | `knowledge-service` | Personal |
 | 8101 | `math-service` | Shared |
