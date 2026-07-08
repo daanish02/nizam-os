@@ -9,20 +9,23 @@ class _JsonFormatter(logging.Formatter):
         entry: dict = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
-            "logger": record.name,
+            "service": record.name,
             "msg": record.getMessage(),
         }
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
-        # merge any extra fields attached via logger.info("msg", extra={...})
+        for key in ("module", "func"):
+            val = record.__dict__.get(key)
+            if val is not None:
+                entry[key] = val
         for key, val in record.__dict__.items():
-            if key not in logging.LogRecord.__dict__ and not key.startswith("_"):
+            if key not in logging.LogRecord.__dict__ and not key.startswith("_") and key not in entry:
                 entry[key] = val
         return json.dumps(entry, default=str)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a JSON-to-stderr logger for the given name."""
+    """Return a JSON-to-stderr logger. Pass extra={"module": ..., "func": ...} for context."""
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stderr)
