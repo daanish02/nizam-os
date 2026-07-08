@@ -14,8 +14,10 @@ ln -sf "$NIZAM_OS/systemd/metrics-llm.timer"          /etc/systemd/system/metric
 ln -sf "$NIZAM_OS/systemd/watcher-inventory.service"  /etc/systemd/system/watcher-inventory.service
 ln -sf "$NIZAM_OS/systemd/watcher-inventory.timer"    /etc/systemd/system/watcher-inventory.timer
 ln -sf "$NIZAM_OS/systemd/watcher-env.service"        /etc/systemd/system/watcher-env.service
-ln -sf "$NIZAM_OS/systemd/metrics-services.service"   /etc/systemd/system/metrics-services.service
+ln -sf "$NIZAM_OS/systemd/metrics-services.service"    /etc/systemd/system/metrics-services.service
 ln -sf "$NIZAM_OS/systemd/metrics-services.timer"     /etc/systemd/system/metrics-services.timer
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.service"  /etc/systemd/system/metrics-toolcalls.service
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.timer"    /etc/systemd/system/metrics-toolcalls.timer
 # logrotate rejects config files not owned by root — symlinks to user-owned files are refused.
 # This is the only file in nizam-os that is COPIED not symlinked.
 # After editing config/logrotate.nizam-os, re-run this script to push the change.
@@ -88,9 +90,12 @@ ls -la /etc/systemd/system/litellm-proxy.service \
        /etc/systemd/system/metrics-services.timer \
        /etc/systemd/system/watcher-inventory.service \
        /etc/systemd/system/watcher-inventory.timer \
-       /etc/systemd/system/watcher-env.service
+       /etc/systemd/system/watcher-env.service \
+       /etc/systemd/system/metrics-toolcalls.service \
+       /etc/systemd/system/metrics-toolcalls.timer
 
 echo ""
-echo "Grafana: configure datasource and import dashboard manually."
-echo "  Datasource: Prometheus @ http://localhost:9090, uid=nizam-prometheus"
-echo "  Dashboard JSON: $NIZAM_OS/grafana/agents-dashboard.json"
+echo "Grafana: configure datasources and import dashboard manually."
+echo "  Prometheus @ http://localhost:9090, uid=nizam-prometheus"
+echo "  Loki       @ http://localhost:3101,  uid=nizam-loki"
+echo "  Dashboard JSON: $NIZAM_OS/grafana/001-personal-dashboard.json"
