@@ -16,8 +16,9 @@ ln -sf "$NIZAM_OS/systemd/watcher-inventory.timer"    /etc/systemd/system/watche
 ln -sf "$NIZAM_OS/systemd/watcher-env.service"        /etc/systemd/system/watcher-env.service
 ln -sf "$NIZAM_OS/systemd/metrics-services.service"    /etc/systemd/system/metrics-services.service
 ln -sf "$NIZAM_OS/systemd/metrics-services.timer"     /etc/systemd/system/metrics-services.timer
-ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.service"  /etc/systemd/system/metrics-toolcalls.service
-ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.timer"    /etc/systemd/system/metrics-toolcalls.timer
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.service"    /etc/systemd/system/metrics-toolcalls.service
+ln -sf "$NIZAM_OS/systemd/metrics-toolcalls.timer"     /etc/systemd/system/metrics-toolcalls.timer
+ln -sf "$NIZAM_OS/systemd/promtail-nizam-os.service"   /etc/systemd/system/promtail-nizam-os.service
 # logrotate rejects config files not owned by root — symlinks to user-owned files are refused.
 # This is the only file in nizam-os that is COPIED not symlinked.
 # After editing config/logrotate.nizam-os, re-run this script to push the change.
