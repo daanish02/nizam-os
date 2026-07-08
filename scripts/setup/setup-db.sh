@@ -12,6 +12,8 @@ DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'svc_litellm') THEN
     CREATE USER svc_litellm WITH PASSWORD '${POSTGRES_SVC_LITELLM_PASS}';
+  ELSE
+    ALTER USER svc_litellm WITH PASSWORD '${POSTGRES_SVC_LITELLM_PASS}';
   END IF;
 END
 \$\$;
