@@ -33,9 +33,9 @@ git clone <repo> ~/nizam-os
 age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
 
 # Generate strong passwords
-openssl rand -base64 32   # → POSTGRES_SVC_LITELLM_PASS
-openssl rand -base64 32   # → LITELLM_MASTER_KEY
-openssl rand -base64 32   # → REDIS_PASSWORD
+openssl rand -hex 32   # → LITELLM_MASTER_KEY
+openssl rand -hex 32   # → POSTGRES_SVC_LITELLM_PASS
+openssl rand -hex 32   # → REDIS_PASSWORD
 
 # Populate nizam-os.env from template and fill all values
 cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
@@ -65,8 +65,8 @@ sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 | `OPENROUTER_API_KEY` | 1 | LiteLLM upstream auth to OpenRouter |
 | `LITELLM_MASTER_KEY` | 1 | LiteLLM admin operations + virtual key parent |
 | `POSTGRES_SVC_LITELLM_PASS` | 1 | `svc_litellm` PostgreSQL role password |
-| `LITELLM_DB_URL` | 1 | Full PostgreSQL DSN for LiteLLM Prisma (`postgresql://svc_litellm:PASS@localhost:5432/nizam`) |
-| `REDIS_URL` | 1 | `redis://:PASSWORD@localhost:6379/0` |
+| `LITELLM_DB_URL` | 1 | Full PostgreSQL DSN for LiteLLM Prisma (`postgresql://svc_litellm:PASS@127.0.0.1:5432/nizam?schema=litellm`) |
+| `REDIS_URL` | 1 | `redis://:PASSWORD@127.0.0.1:6379/0` |
 | `REDIS_PASSWORD` | 1 | Redis `requirepass` value |
 
 Phase 2+ vars added later to nizam-os.env (not Phase 1):
