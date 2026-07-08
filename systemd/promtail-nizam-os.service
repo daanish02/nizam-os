@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=root
 Group=root
-ExecStart=/usr/bin/promtail -config.file /etc/promtail/nizam-os.yaml
+ExecStart=/usr/bin/promtail -config.file /etc/promtail/promtail-nizam-os.yaml
 Restart=on-failure
 RestartSec=5s
 
