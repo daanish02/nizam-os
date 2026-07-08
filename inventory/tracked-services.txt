@@ -1,5 +1,6 @@
 postgresql
 redis-server
+promtail-nizam-os
 watcher-env
 watcher-inventory.timer
 litellm-proxy
