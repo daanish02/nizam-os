@@ -8,9 +8,10 @@ build/
 .ruff_cache/
 .pytest_cache/
 
-*.env
-*-age-key.txt
+nizam-os.env
+nizam-age-key.txt
 secrets.yaml
+*cookies.txt
 *.key
 *.pem
 
