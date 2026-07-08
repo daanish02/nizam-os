@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Detect software inventory changes and notify via Discord webhook.
+# Detect software inventory changes and notify via Discord embed.
 # Runs hourly via watcher-inventory.timer.
 # On first run, writes baseline and exits silently.
-# On subsequent runs, diffs against baseline; POSTs diff to webhook if changed.
+# On subsequent runs, diffs against baseline; posts embed to webhook if changed.
 set -euo pipefail
 
-NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_NAME="watch-inventory"
 source "$NIZAM_OS/scripts/shared/_log.sh"
 
@@ -50,7 +50,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 if [ -n "${DISCORD_WEBHOOK_LOGS:-}" ]; then
-    curl -s \
+    curl -sf \
         -F "payload_json={\"content\":\"Software inventory changed on nizam-vps. Diff attached.\"}" \
         -F "file=@${DIFF_FILE};filename=inventory.diff" \
         "$DISCORD_WEBHOOK_LOGS" > /dev/null
