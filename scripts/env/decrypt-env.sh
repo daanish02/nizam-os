@@ -5,9 +5,10 @@ set -euo pipefail
 
 export SOPS_AGE_KEY_FILE="$HOME/nizam-os/secrets/nizam-age-key.txt"
 
+TMP=$(mktemp)
 sops \
   --decrypt \
   --input-type dotenv \
   --output-type dotenv \
   "$HOME/nizam-os/secrets/nizam-os.env.enc" \
-  > "$HOME/nizam-os/secrets/nizam-os.env"
+  > "$TMP" && mv "$TMP" "$HOME/nizam-os/secrets/nizam-os.env" || { rm -f "$TMP"; exit 1; }
