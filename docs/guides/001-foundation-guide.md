@@ -1,59 +1,21 @@
 # Phase 1 Foundation — Guide
 
-**What this builds:** PostgreSQL, Redis, LiteLLM, Loki, Promtail, audit schema, nizam-shared refactor, systemd units, and Grafana dashboard skeletons. No agents. No Discord.
+**What this builds:** PostgreSQL, Redis, LiteLLM, Loki, Promtail, audit schema, nizam-shared, systemd units, and Grafana dashboard skeleton. No agents. No Discord.
 
-**Spec:** [001 Foundation Design](../specs/001-foundation-design.md)  
-**Plan:** [docs/plans/001 Foundation Plan](../plans/001-foundation-plan.md)  
-**Next phase:** [docs/guides/002 Hermes Baseline Guide](002-hermes-baseline-guide.md)
+**Spec:** [001 Foundation — Design](../specs/001-foundation-design.md)  
+**Plan:** [001 Foundation — Plan](../plans/001-foundation-plan.md)  
+**Next phase:** [002 Hermes Baseline — Guide](002-hermes-baseline-guide.md)
 
 ---
 
 ## Prerequisites
 
-- [ ] `~/nizam-dotfiles/docs/001-setup-guide.md` complete — all 10 steps done and verified
-- [ ] Fresh VPS reachable via Tailscale (`ssh vazir@<tailscale-ip>` works)
-- [ ] `git` and `age` available on VPS
+- [ ] `nizam-dotfiles` `001-machine-setup.sh` complete and verified on this machine
+- [ ] Tailscale running (`tailscale status` shows connected)
 
 ---
 
-## Step 1 — Before wiping the old repo
-
-Do this on the **old machine** before deleting anything.
-
-**1a. Back up the age private key**
-
-```bash
-cat ~/nizam-os/secrets/nizam-age-key.txt
-```
-
-Copy this to a password manager or secure external location. Without it, `nizam-os.env.enc` cannot be decrypted. This is the only thing that cannot be recovered from git.
-
-**1b. Confirm `nizam-os.env.enc` is committed**
-
-```bash
-cd ~/nizam-os
-git status secrets/nizam-os.env.enc
-# Expected: nothing (already committed) or "modified" — commit it
-```
-
-If modified: `git add secrets/nizam-os.env.enc && git commit -m "secrets: update encrypted env"`.
-
-**1c. Confirm personal dashboard JSON is in `grafana/`**
-
-```bash
-ls grafana/
-# → 001-personal-dashboard.json
-```
-
-If it doesn't exist yet, export from Grafana UI (Dashboards → ⋮ → Export JSON → Save to file) and commit. The Business dashboard is in later phase.
-
-**1d. Wipe**
-
-Keep only `docs/` — everything else gets deleted and rebuilt from the plan.
-
----
-
-## Step 2 — Clone on new VPS
+## Step 1 — Clone the repo
 
 ```bash
 git clone <repo-url> ~/nizam-os
@@ -62,75 +24,89 @@ cd ~/nizam-os
 
 ---
 
-## Step 3 — Secrets setup
+## Step 2 — Choose your path
 
-**Rebuild (reusing existing credentials — most common):**
+### Path A — Fresh (first time, no prior credentials)
 
-```bash
-# Restore the age key you backed up in Step 1a
-nano ~/nizam-os/secrets/nizam-age-key.txt   # paste key content
-
-# 001-foundation.sh will detect nizam-os.env.enc and decrypt automatically
-```
-
-**Fresh (new credentials):**
+Generate an age key and fill secrets manually:
 
 ```bash
-# Generate age key
+# Age key encryption
+sudo apt-get install -y age
+
 age-keygen -o ~/nizam-os/secrets/nizam-age-key.txt
+chmod 600 ~/nizam-os/secrets/nizam-age-key.txt
 
-# Generate strong passwords — run each command separately, copy outputs
-openssl rand -base64 32   # → LITELLM_MASTER_KEY
-openssl rand -base64 32   # → POSTGRES_SVC_LITELLM_PASS
-openssl rand -base64 32   # → REDIS_PASSWORD
+openssl rand -hex 32   # → LITELLM_MASTER_KEY
+openssl rand -hex 32   # → POSTGRES_SVC_LITELLM_PASS
+openssl rand -hex 32   # → REDIS_PASSWORD
 
-# Fill nizam-os.env
 cp ~/nizam-os/secrets/nizam-os.env.example ~/nizam-os/secrets/nizam-os.env
 nano ~/nizam-os/secrets/nizam-os.env
 ```
 
-`nizam-os.env` needs 6 values:
+> **Passwords must use `openssl rand -hex 32`, never base64.**
+> `LITELLM_DB_URL` and `REDIS_URL` embed the password directly in the URL string. Base64 output contains `/` which breaks URL parsers (Prisma P1013 "invalid port", Redis `ValueError: invalid port`). Hex is alphanumeric only — safe in any URL field.
+
+`nizam-os.env` needs these values:
 
 | Variable | Where to get it |
 |----------|----------------|
 | `OPENROUTER_API_KEY` | openrouter.ai → Keys |
 | `LITELLM_MASTER_KEY` | generated above |
 | `POSTGRES_SVC_LITELLM_PASS` | generated above |
-| `LITELLM_DB_URL` | `postgresql://svc_litellm:POSTGRES_SVC_LITELLM_PASS@localhost:5432/nizam?schema=litellm` |
+| `LITELLM_DB_URL` | `postgresql://svc_litellm:POSTGRES_SVC_LITELLM_PASS@127.0.0.1:5432/nizam?schema=litellm` |
 | `REDIS_PASSWORD` | generated above |
-| `REDIS_URL` | `redis://:REDIS_PASSWORD@localhost:6379/0` |
+| `REDIS_URL` | `redis://:REDIS_PASSWORD@127.0.0.1:6379/0` |
+
+After `001-foundation.sh` runs, it will encrypt `nizam-os.env` → `nizam-os.env.enc` and prompt you to commit it. Back up `nizam-age-key.txt` to a password manager — it is the only thing not in git.
 
 ---
 
-## Step 4 — Run 001-foundation.sh
+### Path B — Rebuild (migrating to new machine, credentials already exist)
+
+You need two things from your previous machine (or backup):
+
+1. **`nizam-age-key.txt`** — the age private key (backed up to password manager)
+2. **`nizam-os.env.enc`** — already in git, no action needed
+
+```bash
+# Restore the age key
+nano ~/nizam-os/secrets/nizam-age-key.txt   # paste key content from password manager
+```
+
+`001-foundation.sh` decrypts automatically only when `nizam-os.env` does **not** exist. If `nizam-os.env` is present (e.g. you edited it manually), it is used as-is and the `.enc` file is left untouched. The watcher then re-encrypts on next save.
+
+On a fresh machine with no `nizam-os.env`, foundation.sh decrypts from `.enc` automatically. No other manual step needed.
+
+---
+
+## Step 3 — Run `001-foundation.sh`
 
 ```bash
 sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 ```
 
-Takes 5–10 minutes. The script is idempotent — if it fails partway, fix the error and re-run from the same point.
+Takes 5–10 minutes. Idempotent — if it fails partway, fix the error and re-run.
 
 **What it does (in order):**
-1. Detects rebuild vs fresh, decrypts or validates secrets
-2. Installs: PostgreSQL 16, pgvector, ParadeDB, Redis, Loki, Promtail, age, sops, gettext-base
-3. Configures Redis from `config/redis.conf` (envsubst fills the password)
-4. Installs Loki + Promtail, copies configs, starts both
-5. Installs uv + LiteLLM via `uv tool install`
-6. Creates `nizam` database, `svc_litellm` role, enables extensions
-7. Runs `db/migrations/001_audit_schema.sql`
-8. Creates `/var/lib/prometheus/node-exporter/` (owned by vazir)
-9. Wires symlinks (`install-symlinks.sh`)
+1. Detects path (rebuild vs fresh), decrypts or validates secrets
+2. Installs: PostgreSQL 16, pgvector, ParadeDB, Redis, age, sops, gettext-base (Loki managed by dotfiles)
+3. Configures Redis from `config/redis.conf` (substitutes password from env)
+4. Copies nizam-os Promtail config to `/etc/promtail/promtail-nizam-os.yaml`
+5. Starts PostgreSQL, creates `nizam` database, `vazir` superuser role, `svc_litellm` role, enables extensions
+6. Installs uv + LiteLLM via `uv tool install --with prisma`, runs `prisma generate` + `prisma db push` (needs DB from step 5)
+7. Runs dbmate migrations (`db/migrations/`)
+8. Creates `/var/lib/prometheus/node-exporter/` owned by vazir
+9. Wires symlinks (`install-symlinks.sh`), starts `promtail-nizam-os.service`
 10. Encrypts `nizam-os.env` → `nizam-os.env.enc` if not already done
 11. Enables: `watcher-env`, `watcher-inventory.timer`, all metrics timers
 12. Starts `litellm-proxy`, waits for `/health/liveliness`
 13. Waits for Loki `/ready`
-14. Prints Grafana setup instructions
 
 ---
 
-## Step 5 — Verify exit criteria
-
-Run after 001-foundation.sh completes:
+## Step 4 — Verify
 
 ```bash
 # LiteLLM
@@ -141,17 +117,13 @@ curl -s http://localhost:4000/health/liveliness
 source ~/nizam-os/secrets/nizam-os.env && redis-cli -a "$REDIS_PASSWORD" ping
 # → PONG
 
-# PostgreSQL — both schemas present
-sudo -u postgres psql nizam -c "\dn"
+# PostgreSQL — both schemas present (runs as vazir via peer auth)
+psql nizam -c "\dn"
 # → audit, litellm
 
 # Loki
 curl -s http://localhost:3100/ready
 # → ready
-
-# Secrets
-grep -c "=" ~/nizam-os/secrets/nizam-os.env
-# → 6
 
 # Metric files (wait 5 min after timers start)
 ls /var/lib/prometheus/node-exporter/nizam-*.prom
@@ -159,7 +131,7 @@ ls /var/lib/prometheus/node-exporter/nizam-*.prom
 
 # All Phase 1 units active
 systemctl is-active \
-  litellm-proxy loki promtail \
+  litellm-proxy loki promtail promtail-nizam-os \
   watcher-env watcher-inventory.timer \
   metrics-llm.timer metrics-services.timer metrics-toolcalls.timer
 # → all: active
@@ -167,39 +139,37 @@ systemctl is-active \
 
 ---
 
-## Step 6 — Grafana setup (manual)
+## Step 5 — Grafana setup (manual)
 
-Grafana has no CLI for datasource + dashboard import. Do this once via browser.
+Open `http://<tailscale-ip>:3000` (default login: admin/admin — change immediately).
 
-Open Grafana at `http://<tailscale-ip>:3000` (default login: admin/admin — change immediately).
-
-**Datasources:**
+**Add datasources:**
 
 1. Connections → Data Sources → Add → **Prometheus**
    - URL: `http://localhost:9090`
    - UID: `nizam-prometheus`
-   - → Save & Test (should show green)
+   - → Save & Test
 
 2. Connections → Data Sources → Add → **Loki**
    - URL: `http://localhost:3100`
    - UID: `nizam-loki`
    - → Save & Test
 
-**Dashboards:**
+**Import dashboard:**
 
 3. Dashboards → New → Import → upload `grafana/001-personal-dashboard.json`
 
-> Most panels will show "no data" — that's correct. Infrastructure and LLM panels populate immediately. Finance, habits, and knowledge panels populate in later phases. The Business dashboard is also later scope.
+Most panels show "no data" until later phases populate them — that is expected.
 
 ---
 
-## Step 7 — Commit `nizam-os.env.enc`
+## Step 6 — Commit secrets (Path A only)
 
-If this was a fresh setup (new credentials), `001-foundation.sh` created a new `nizam-os.env.enc`. Commit it:
+If this was a fresh setup, commit the newly created `nizam-os.env.enc`:
 
 ```bash
 cd ~/nizam-os
-git add secrets/nizam-os.env.enc secrets/nizam-os.env.example
+git add secrets/nizam-os.env.enc
 git commit -m "secrets: initial encrypted env for phase 1"
 git push
 ```
@@ -208,42 +178,71 @@ git push
 
 ## Troubleshooting
 
-**LiteLLM doesn't start:**
+Script is idempotent — fix the error, re-run:
+
+```bash
+sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
+```
+
+Missing env values:
+
+```bash
+nano ~/nizam-os/secrets/nizam-os.env   # fill all 6 values
+```
+
+LiteLLM not starting:
+
 ```bash
 journalctl -u litellm-proxy -n 50
-# Common: LITELLM_DB_URL wrong, or PostgreSQL not yet accepting connections
+# Common causes:
+#   LITELLM_DB_URL wrong — check password has no special chars (must be hex)
+#   PostgreSQL not ready — check: systemctl status postgresql
 ```
 
-**Redis auth failure:**
+Prisma `P1013 invalid port number` or LiteLLM/Redis `ValueError: invalid port`:
+
 ```bash
-# Check password matches between nizam-os.env and /etc/redis/redis.conf
+# Password in LITELLM_DB_URL or REDIS_URL contains '/' from base64 encoding.
+# Regenerate all affected passwords with hex (no special chars):
+openssl rand -hex 32   # → new POSTGRES_SVC_LITELLM_PASS
+openssl rand -hex 32   # → new REDIS_PASSWORD
+# Update nizam-os.env — setup-db.sh will ALTER USER on next run.
+# Update LITELLM_DB_URL and REDIS_URL to use new passwords with 127.0.0.1 (not localhost).
+```
+
+Redis auth failure:
+
+```bash
 grep requirepass /etc/redis/redis.conf
 grep REDIS_PASSWORD ~/nizam-os/secrets/nizam-os.env
+# → both values must match
 ```
 
-**Loki not ready:**
+Loki not ready:
+
 ```bash
 journalctl -u loki -n 30
 # Common: /var/lib/loki/ permissions or config syntax error
 ```
 
-**Metric files not appearing:**
+Metric files not appearing after 5 min:
+
 ```bash
-# Trigger manually to see errors
 systemctl start metrics-llm.service
 journalctl -u metrics-llm -n 20
 ```
 
-**Re-run 001-foundation.sh after partial failure:**
+sops decrypt fails ("no age identity found"):
+
 ```bash
-sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
-# Safe — every block checks state before acting
+age-keygen -y ~/nizam-os/secrets/nizam-age-key.txt
+# → prints public key — must match line 1 of nizam-os.env.enc
 ```
 
----
+pg_search not loading:
 
-## What's next
-
-Phase 1 is infrastructure only. No agents, no Discord. Proceed to:
-
-**[Phase 2 — Hermes baseline](002-hermes-baseline.md):** Hermes install, Discord server setup, all agent profiles configured, LiteLLM virtual keys per agent.
+```bash
+grep shared_preload_libraries /etc/postgresql/16/main/postgresql.conf
+# → shared_preload_libraries = 'pg_search'
+journalctl -u postgresql -n 10 | grep -i "error\|pg_search"
+```
