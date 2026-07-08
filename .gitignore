@@ -11,7 +11,7 @@ build/
 nizam-os.env
 nizam-age-key.txt
 secrets.yaml
-*cookies.txt
+*.cookies.txt
 *.key
 *.pem
 
@@ -20,6 +20,7 @@ secrets.yaml
 hermes/profiles/*/skills/.usage.json.lock
 
 logs/*.log
+logs/*.log.*
 logs/*.gz
 !logs/.gitkeep
 
