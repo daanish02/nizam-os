@@ -34,6 +34,6 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/LITELLM_DB_URL
   disable_spend_logs: false
-  # Allow the proxy to start even if DB is momentarily unavailable.
-  # Spend logs will be written once DB is reachable.
   allow_requests_on_db_unavailable: true
+  database_connection_pool_limit: 3
+  database_connection_timeout: 30
