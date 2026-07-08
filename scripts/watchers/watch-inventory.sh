@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Detect software inventory changes and notify via Discord embed.
+# Detect package inventory changes, notify via Discord embed, and commit to git.
 # Runs hourly via watcher-inventory.timer.
 # On first run, writes baseline and exits silently.
-# On subsequent runs, diffs against baseline; posts embed to webhook if changed.
+# On subsequent runs, diffs against baseline; posts embed if changed, then commits.
 set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -12,36 +12,36 @@ source "$NIZAM_OS/scripts/shared/_log.sh"
 BASE="$NIZAM_OS/inventory"
 mkdir -p "$BASE"
 
-SOFTWARE="$BASE/software.txt"
-SOFTWARE_HASH="$BASE/software.sha256"
+PACKAGES="$BASE/packages.txt"
+PACKAGES_HASH="$BASE/packages.sha256"
 DIFF_FILE="$BASE/last.diff"
 
-TMP_SOFTWARE=$(mktemp)
-trap 'rm -f "$TMP_SOFTWARE"' EXIT
+TMP_PACKAGES=$(mktemp)
+trap 'rm -f "$TMP_PACKAGES"' EXIT
 
-"$NIZAM_OS/scripts/generate-software-inventory.sh" > "$TMP_SOFTWARE"
+"$NIZAM_OS/scripts/generate-packages-inventory.sh" > "$TMP_PACKAGES"
 
-SOFTWARE_NEW_HASH=$(sha256sum "$TMP_SOFTWARE" | awk '{print $1}')
+PACKAGES_NEW_HASH=$(sha256sum "$TMP_PACKAGES" | awk '{print $1}')
 
-if [ ! -f "$SOFTWARE" ]; then
-    cp "$TMP_SOFTWARE" "$SOFTWARE"
-    echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
+if [ ! -f "$PACKAGES" ]; then
+    cp "$TMP_PACKAGES" "$PACKAGES"
+    echo "$PACKAGES_NEW_HASH" > "$PACKAGES_HASH"
     log_info "baseline written"
     exit 0
 fi
 
-SOFTWARE_OLD_HASH=$(cat "$SOFTWARE_HASH")
+PACKAGES_OLD_HASH=$(cat "$PACKAGES_HASH")
 
-if [ "$SOFTWARE_NEW_HASH" = "$SOFTWARE_OLD_HASH" ]; then
+if [ "$PACKAGES_NEW_HASH" = "$PACKAGES_OLD_HASH" ]; then
     exit 0
 fi
 
-diff -u "$SOFTWARE" "$TMP_SOFTWARE" > "$DIFF_FILE" || true
+diff -u "$PACKAGES" "$TMP_PACKAGES" > "$DIFF_FILE" || true
 
-cp "$TMP_SOFTWARE" "$SOFTWARE"
-echo "$SOFTWARE_NEW_HASH" > "$SOFTWARE_HASH"
+cp "$TMP_PACKAGES" "$PACKAGES"
+echo "$PACKAGES_NEW_HASH" > "$PACKAGES_HASH"
 
-log_info "software inventory changed"
+log_info "package inventory changed"
 
 ENV_FILE="$NIZAM_OS/secrets/nizam-os.env"
 if [ -f "$ENV_FILE" ]; then
@@ -49,9 +49,24 @@ if [ -f "$ENV_FILE" ]; then
     set -a; source "$ENV_FILE"; set +a
 fi
 
+# Discord embed — diff as code block with color (```diff renders +/- as green/red)
 if [ -n "${DISCORD_WEBHOOK_LOGS:-}" ]; then
-    curl -sf \
-        -F "payload_json={\"content\":\"Software inventory changed on nizam-vps. Diff attached.\"}" \
-        -F "file=@${DIFF_FILE};filename=inventory.diff" \
-        "$DISCORD_WEBHOOK_LOGS" > /dev/null
+    DIFF_CONTENT=$(cat "$DIFF_FILE")
+    # Truncate to stay within Discord embed description limit (4096 chars)
+    MAX=3800
+    if [ "${#DIFF_CONTENT}" -gt "$MAX" ]; then
+        DIFF_CONTENT="${DIFF_CONTENT:0:$MAX}"$'\n... (truncated)'
+    fi
+    # Escape backslashes and double-quotes for JSON
+    DIFF_ESCAPED=$(printf '%s' "$DIFF_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}')
+    curl -sf -X POST "$DISCORD_WEBHOOK_LOGS" \
+        -H "Content-Type: application/json" \
+        -d "{\"embeds\":[{\"title\":\"Package inventory changed\",\"description\":\"\\`\\`\\`diff\\n${DIFF_ESCAPED}\\`\\`\\`\",\"color\":3447003}]}" \
+        > /dev/null || log_warn "Discord notify failed"
 fi
+
+# Auto-commit changed packages.txt so git history tracks package drift
+cd "$NIZAM_OS"
+git add inventory/packages.txt inventory/packages.sha256 2>/dev/null || true
+git commit -m "inventory: packages updated $(date +%Y-%m-%d)" 2>/dev/null || true
+git push 2>/dev/null || log_warn "git push failed — will retry next run"
