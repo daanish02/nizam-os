@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Reads inventory/services.txt → writes nizam-services.prom for Prometheus node-exporter.
-# Runs every 5 min as root via metrics-services.timer (same pattern as metrics-llm).
+# Polls tracked-services.txt → writes nizam-services.prom for Prometheus node-exporter.
+# Runs every 5 min as root via metrics-services.timer.
 set -euo pipefail
 
-NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_NAME="metrics-services"
 source "$NIZAM_OS/scripts/shared/_log.sh"
 
-SERVICES_FILE="$NIZAM_OS/inventory/services.txt"
+TRACKED="$NIZAM_OS/inventory/tracked-services.txt"
 OUT="/var/lib/prometheus/node-exporter/nizam-services.prom"
 TMP="${OUT}.tmp"
 
-if [ ! -f "$SERVICES_FILE" ]; then
-    log_error "services.txt not found — skipping"
+if [ ! -f "$TRACKED" ]; then
+    log_error "tracked-services.txt not found — skipping"
     exit 1
 fi
 
@@ -20,20 +20,19 @@ total=0
 up=0
 metric_lines=()
 
-while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    svc=$(echo "$line" | cut -d'|' -f1 | tr -d ' ')
-    type=$(echo "$line" | cut -d'|' -f2 | tr -d ' ')
-    status=$(echo "$line" | cut -d'|' -f3 | tr -d ' ')
-    [[ -z "$svc" ]] && continue
+while IFS= read -r svc; do
+    [[ -z "$svc" || "$svc" == \#* ]] && continue
 
-    val=0
-    [[ "$status" == "active" ]] && val=1
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+        val=1
+        up=$((up + 1))
+    else
+        val=0
+    fi
 
-    metric_lines+=("nizam_service_up{service=\"${svc}\",type=\"${type}\"} ${val}")
+    metric_lines+=("nizam_service_up{service=\"${svc}\"} ${val}")
     total=$((total + 1))
-    up=$((up + val))
-done < "$SERVICES_FILE"
+done < "$TRACKED"
 
 {
     echo "# HELP nizam_service_up Service is active (1) or not (0)"
@@ -53,4 +52,9 @@ done < "$SERVICES_FILE"
 
 mv "$TMP" "$OUT"
 chmod 644 "$OUT"
-log_info "wrote ${up}/${total} services up"
+
+if [ "$up" -lt "$total" ]; then
+    log_error "services degraded: ${up}/${total} up"
+else
+    log_info "all ${total} services up"
+fi
