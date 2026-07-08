@@ -30,7 +30,7 @@ while IFS= read -r svc; do
         val=0
     fi
 
-    metric_lines+=("nizam_service_up{service=\"${svc}\"} ${val}")
+    metric_lines+=("nizam_service_up{service=\"${svc}\",source=\"nizam-os\"} ${val}")
     total=$((total + 1))
 done < "$TRACKED"
 
