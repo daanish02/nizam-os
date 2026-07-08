@@ -16,7 +16,7 @@ class ServiceBase:
     Provides:
     - JSON structured logger (stderr)
     - psycopg3 connection factory (dict rows, auto commit/rollback)
-    - AuditLogger writing to knowledge.vault_audit
+    - AuditLogger writing to audit.log
     - Redis client for short-lived caching
     """
 
@@ -24,12 +24,7 @@ class ServiceBase:
         self.name = name
         self.logger = get_logger(name)
 
-        pg_pass = os.environ["POSTGRES_SVC_KNOWLEDGE_PASS"]
-        pg_host = os.environ.get("POSTGRES_HOST", "localhost")
-        pg_port = os.environ.get("POSTGRES_PORT", "5432")
-        pg_db = os.environ.get("POSTGRES_DB", "nizam")
-        self.dsn = f"postgresql://svc_knowledge:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
-
+        self.dsn = os.environ["POSTGRES_DSN"]
         self.audit = AuditLogger(self.dsn)
 
         redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
