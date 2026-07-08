@@ -1,0 +1,13 @@
+[Unit]
+Description=Promtail for nizam-os logs
+After=network.target
+
+[Service]
+User=root
+Group=root
+ExecStart=/usr/bin/promtail -config.file /etc/promtail/nizam-os.yaml
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
