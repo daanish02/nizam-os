@@ -10,6 +10,10 @@ User=vazir
 Group=vazir
 WorkingDirectory=/home/vazir/nizam-os
 EnvironmentFile=/home/vazir/nizam-os/secrets/nizam-os.env
+# Use local bundled cost map instead of downloading + caching full pricing JSON at startup
+Environment=LITELLM_LOCAL_MODEL_COST_MAP=True
+# Return memory to OS more aggressively (reduces Python allocator fragmentation)
+Environment=MALLOC_TRIM_THRESHOLD_=100000
 ExecStart=/home/vazir/.local/bin/litellm \
     --config /home/vazir/nizam-os/config/litellm.yaml \
     --port 4000 \
