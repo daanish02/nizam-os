@@ -17,7 +17,7 @@ secrets.yaml
 
 *.prom
 /tmp/
-hermes/profiles/*/skills/.usage.json.lock
+*.diff
 
 logs/*.log
 logs/*.log.*
