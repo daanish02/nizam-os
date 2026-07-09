@@ -3,7 +3,7 @@
 # Runs as watcher-env.service — long-running via inotifywait.
 set -euo pipefail
 
-NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
+NIZAM_OS="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_NAME="watch-env"
 source "$NIZAM_OS/scripts/shared/_log.sh"
 
