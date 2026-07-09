@@ -121,6 +121,7 @@ zsh | 5.9-6ubuntu2
 dbmate
 sops
 yt-dlp
+admin
 env
 env.fish
 hermes
