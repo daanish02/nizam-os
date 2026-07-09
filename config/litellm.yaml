@@ -26,7 +26,7 @@ litellm_settings:
     supported_call_types:
       - acompletion
       - completion
-  drop_params: false
+  drop_params: true
   request_timeout: 600
   store_end_user: true
 
