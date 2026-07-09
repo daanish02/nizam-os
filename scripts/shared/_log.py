@@ -21,7 +21,7 @@ class _JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "script": record.name,
             "msg": record.getMessage(),
-        })
+        }, separators=(',', ':'))
 
 
 class _ColorFormatter(logging.Formatter):
