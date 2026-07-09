@@ -4,6 +4,8 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 
 **Principle:** Personal agents before business agents. Within personal, admin is critical infrastructure — he maintains all other services. Nail admin before curator and assistant; failures in curator and assistant are recoverable, failures in admin take down everyone. Business agents build on lessons from all previous agents.
 
+**Convention:** Each phase ships one idempotent orchestrator script (`scripts/setup/00N-<phase-name>.sh`) that can be re-run safely to reach or verify that phase's exit criteria. The script is the canonical way to set up or recover that phase.
+
 ---
 
 ## Phase 1 — Foundation
@@ -20,6 +22,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - Grafana (Personal dashboard skeleton)
 - age encryption setup; `secrets/nizam-os.env` populated
 - `audit` schema migration run
+- `scripts/setup/001-foundation.sh` — idempotent orchestrator for this phase
 
 **Exit criteria:** LiteLLM proxy reachable at `localhost:4000`. PostgreSQL running with `nizam` database and `audit.log` table. Loki reachable at `localhost:3100`. Grafana loading at `localhost:3000`.
 
@@ -40,6 +43,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - LiteLLM Prisma migration run (spend tracking active)
 - `/etc/sudoers.d/admin-nizam` created
 - Metrics timers wired up
+- `scripts/setup/002-hermes.sh` — idempotent orchestrator for this phase
 
 **Exit criteria:** Discord server exists with all channels and all bot tokens available. Hermes can connect to Discord. All Hermes profile configs pass the security checklist in [SECURITY](docs/SECURITY.md). Spend tracking recording in LiteLLM DB.
 
