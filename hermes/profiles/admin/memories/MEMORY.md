@@ -1,1 +1,0 @@
-Placeholder to check existing memory
