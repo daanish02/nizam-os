@@ -41,7 +41,6 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 - `DISCORD_ALLOWED_USERS` set on all profiles
 - `discord.allowed_channels` set on all profiles
 - LiteLLM Prisma migration run (spend tracking active)
-- `/etc/sudoers.d/admin-nizam` created
 - Metrics timers wired up
 - `scripts/setup/002-hermes.sh` — idempotent orchestrator for this phase
 
@@ -55,6 +54,7 @@ Build order and exit criteria by phase. No dates — phases are sequenced by dep
 
 **Includes:**
 - Admin's Hermes profile active in Discord
+- `/etc/sudoers.d/admin-nizam` created
 - Admin can restart all defined services via `command_allowlist`
 - Incident reporting to Discord verified
 - Metrics dashboards showing service health
