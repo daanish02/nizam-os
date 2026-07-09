@@ -21,4 +21,9 @@ while inotifywait -e close_write "$ENV_FILE"; do
     "$NIZAM_OS/scripts/env/encrypt-env.sh"
     log_info "updating .env.example"
     update_example
+    log_info "committing and pushing"
+    git -C "$NIZAM_OS" add secrets/nizam-os.env.enc secrets/nizam-os.env.example
+    git -C "$NIZAM_OS" commit -m "chore(secrets): update nizam-os.env.enc"
+    git -C "$NIZAM_OS" push
+    log_info "done"
 done
