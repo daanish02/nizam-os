@@ -1,10 +1,17 @@
-"""Shared JSON logger for nizam-os one-shot Python scripts."""
+"""Shared logger for nizam-os one-shot Python scripts."""
 
 import json
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+
+_COLORS = {
+    "INFO": "\033[0;32m",
+    "WARNING": "\033[0;33m",
+    "ERROR": "\033[0;31m",
+}
+_RESET = "\033[0m"
 
 
 class _JsonFormatter(logging.Formatter):
@@ -17,20 +24,30 @@ class _JsonFormatter(logging.Formatter):
         })
 
 
+class _ColorFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        color = _COLORS.get(record.levelname, "")
+        tag = record.levelname[:4]
+        return f"{color}[{tag}]{_RESET}  {ts} {record.getMessage()}"
+
+
 def setup_logging(name: str) -> logging.Logger:
-    """Return a logger that writes JSON to stdout and ~/nizam-os/logs/scripts.log."""
+    """Return a logger that writes colored output to stdout (TTY) or JSON (piped), and JSON to file."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    fmt = _JsonFormatter()
 
     sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(fmt)
+    if sys.stdout.isatty():
+        sh.setFormatter(_ColorFormatter())
+    else:
+        sh.setFormatter(_JsonFormatter())
     logger.addHandler(sh)
 
     log_path = Path.home() / "nizam-os" / "logs" / "scripts.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     fh = logging.FileHandler(str(log_path))
-    fh.setFormatter(fmt)
+    fh.setFormatter(_JsonFormatter())
     logger.addHandler(fh)
 
     return logger
