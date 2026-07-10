@@ -122,6 +122,7 @@ dbmate
 sops
 yt-dlp
 admin
+assistant
 env
 env.fish
 hermes
