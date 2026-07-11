@@ -123,5 +123,6 @@ sops
 yt-dlp
 env
 env.fish
+hermes
 uv
 uvx
