@@ -121,10 +121,7 @@ zsh | 5.9-6ubuntu2
 dbmate
 sops
 yt-dlp
-admin
-assistant
 env
 env.fish
-hermes
 uv
 uvx
