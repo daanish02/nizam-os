@@ -1,0 +1,107 @@
+model:
+  default: deepseek/deepseek-v4-flash
+  provider: custom
+  base_url: http://localhost:4000
+  api_mode: chat_completions
+  api_key: ${LITELLM_VIRTUAL_KEY_ADMIN}
+agent:
+  disabled_toolsets:
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - context_engine
+    - cronjob
+    - delegation
+    - discord
+    - discord_admin
+    - feishu_doc
+    - feishu_drive
+    - homeassistant
+    - image_gen
+    - kanban
+    - memory
+    - project
+    - search
+    - session_search
+    - skills
+    - spotify
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+    - yuanbao
+compression:
+  enabled: false
+display:
+  tool_progress: all
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+_config_version: 33
+custom_providers:
+  - name: Local (localhost:4000)
+    base_url: http://localhost:4000
+    model: deepseek/deepseek-v4-flash
+    api_mode: chat_completions
+platform_toolsets:
+  cli:
+    - file
+    - terminal
+smart_model_routing:
+  enabled: false
+session_reset:
+  mode: none
+stt:
+  enabled: false
+security:
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: true
+  redact_secrets: true
+  allow_lazy_installs: false
+discord:
+  require_mention: false
+  allowed_channels:
+    - ${DISCORD_CHANNEL_ALERTS}
+    - ${DISCORD_CHANNEL_LOGS}
+    - ${DISCORD_CHANNEL_ADMIN}
+    - ${DISCORD_CHANNEL_SANDBOX}
+  auto_thread: true
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+approvals:
+  mode: manual
+  cron_mode: manual
+command_allowlist:
+  - systemctl restart litellm-proxy
+  - systemctl start litellm-proxy
+  - systemctl restart watcher-env
+  - systemctl start watcher-env
+  - systemctl restart watcher-inventory.timer
+  - systemctl start watcher-inventory.timer
+  - systemctl restart metrics-llm.timer
+  - systemctl start metrics-llm.timer
+  - systemctl restart metrics-services.timer
+  - systemctl start metrics-services.timer
+  - systemctl restart metrics-toolcalls.timer
+  - systemctl start metrics-toolcalls.timer
+  - systemctl restart loki
+  - systemctl start loki
+  - systemctl restart promtail
+  - systemctl start promtail
+  - systemctl restart prometheus
+  - systemctl start prometheus
+  - systemctl restart prometheus-node-exporter
+  - systemctl start prometheus-node-exporter
+  - systemctl restart grafana-server
+  - systemctl start grafana-server
+  - systemctl restart postgresql
+  - systemctl start postgresql
+  - systemctl restart redis-server
+  - systemctl start redis-server
