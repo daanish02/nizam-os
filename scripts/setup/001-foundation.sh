@@ -114,8 +114,7 @@ _ok "secrets loaded"
 _step "System packages"
 apt-get install -y -q \
     postgresql postgresql-client postgresql-contrib \
-    redis-server \
-    inotify-tools
+    redis-server inotify-tools yq
 _ok "done"
 
 # Step 3: pgvector
