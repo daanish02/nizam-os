@@ -91,6 +91,70 @@ State timeline shows gaps immediately. Services tracked: `litellm-proxy`, `loki`
 
 Live logs are pretty-printed JSON. Filter by `service` label to isolate an MCP service; filter by `script` label to isolate a bash script. Both labels are extracted by Promtail — only the applicable label is set per log line.
 
+### Agent usage panels (Phase 2 — live once Nazim is active)
+
+Install calendar panel plugin first (required for cost heatmap):
+
+```bash
+grafana-cli plugins install marcusolsson-calendar-panel
+systemctl restart grafana-server
+```
+
+**Row A — Summary stats (full-width strip)**
+
+| Panel | Type | Query |
+|---|---|---|
+| Total spend all time | Stat | `sum(nizam_llm_spend_usd_total)` |
+| Total input tokens all time | Stat | `sum(nizam_llm_input_tokens_total)` |
+| Total output tokens all time | Stat | `sum(nizam_llm_output_tokens_total)` |
+| Total tool calls all time | Stat | `sum(nizam_tool_calls_total)` |
+
+**Row B — Spend by agent**
+
+| Panel | Type | Query |
+|---|---|---|
+| Spend by agent (all time) | Bar gauge | `sum by (profile) (nizam_llm_spend_usd_total)` — legend: `{{profile}}` |
+| Spend by agent (last 30d) | Bar gauge | `sum by (profile) (increase(nizam_llm_spend_usd_total[30d]))` — legend: `{{profile}}` |
+
+Both: categorical, `bargauge` vertical. `_this_month` metrics have no profile labels — use `increase([30d])` for per-agent breakdown.
+
+**Row C — Token usage by agent**
+
+| Panel | Type | Query |
+|---|---|---|
+| Input tokens by agent (all time) | Bar gauge | `sum by (profile) (nizam_llm_input_tokens_total)` — legend: `{{profile}}` |
+| Input tokens by agent (last 30d) | Bar gauge | `sum by (profile) (increase(nizam_llm_input_tokens_total[30d]))` — legend: `{{profile}}` |
+| Output tokens by agent (all time) | Bar gauge | `sum by (profile) (nizam_llm_output_tokens_total)` — legend: `{{profile}}` |
+| Output tokens by agent (last 30d) | Bar gauge | `sum by (profile) (increase(nizam_llm_output_tokens_total[30d]))` — legend: `{{profile}}` |
+
+**Row D — Daily cost heatmap**
+
+GitHub activity chart style — each cell = one day, intensity = daily spend. Red shades instead of green.
+
+| Field | Value |
+|---|---|
+| Panel type | Calendar panel (`marcusolsson-calendar-panel`) |
+| Query | `increase(nizam_llm_spend_usd_total[$__interval])` |
+| Color scheme | Custom gradient: `#fff5f5` → `#fc8c8c` → `#e53e3e` → `#7b0000` |
+| Zero-spend days | Near-white (blank appearance) |
+| X axis | Calendar days |
+| Cell value | Daily spend (USD) |
+
+**Row E — Tool usage**
+
+| Panel | Type | Query |
+|---|---|---|
+| Total tool calls all time | Stat | `sum(nizam_tool_calls_total)` |
+| Total tool calls this month | Stat | `sum(increase(nizam_tool_calls_total[30d]))` |
+| Tool calls by tool (all time) | Bar chart | `nizam_tool_calls_total` — legend: `{{tool}}` |
+| Tool calls by tool (this month) | Bar chart | `increase(nizam_tool_calls_total[30d])` — legend: `{{tool}}` |
+| Tools used per agent | Table | `nizam_tool_calls_total` — columns: Tool (`{{tool}}`), Agent (`{{profile}}`), Calls |
+| Tool error rate | Gauge | `sum(nizam_tool_errors_total) / sum(nizam_tool_calls_total)` — unit: %, threshold: warn >5%, crit >15% |
+
+After adding all rows: save dashboard → Share → Export → save file → overwrite `grafana/personal-dashboard.json`.
+
+---
+
 ### Knowledge panels (Noor — Phase 4)
 
 Vault size, ingestion rate, learning heatmap, and knowledge treemap. All sourced from PostgreSQL `knowledge` schema. Show "no data" until Phase 4.
