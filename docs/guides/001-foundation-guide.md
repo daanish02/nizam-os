@@ -84,6 +84,7 @@ On a fresh machine with no `nizam-os.env`, foundation.sh decrypts from `.enc` au
 ## Step 3 — Run `001-foundation.sh`
 
 ```bash
+# Run foundation setup script
 sudo bash ~/nizam-os/scripts/setup/001-foundation.sh
 ```
 
