@@ -41,10 +41,11 @@ def setup_logging(name: str) -> logging.Logger:
     if sys.stdout.isatty():
         sh.setFormatter(_ColorFormatter())
     else:
+        # JSON when piped — structured for journald ingestion
         sh.setFormatter(_JsonFormatter())
     logger.addHandler(sh)
 
-    log_path = Path.home() / "nizam-os" / "logs" / "scripts.log"
+    log_path = Path.home() / "nizam-os" / "logs" / "scripts.log"  # overridable: set NIZAM_LOG=/path/to/file.log
     log_path.parent.mkdir(parents=True, exist_ok=True)
     fh = logging.FileHandler(str(log_path))
     fh.setFormatter(_JsonFormatter())

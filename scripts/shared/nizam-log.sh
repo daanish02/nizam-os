@@ -2,6 +2,7 @@
 # Unified log viewer for nizam-os.
 # Shows system services, user agent gateways, and one-shot script logs.
 # Usage: nizam-log [-n N] [-f] [-s system|agents|scripts|metrics]
+# set -e intentionally omitted — interactive viewer must not exit on non-zero exit codes
 
 LINES=30
 FOLLOW=0
@@ -31,6 +32,7 @@ show_system() {
 
 show_agents() {
     sep "agent gateways (last $LINES)"
+    # update this list when new profiles are added
     journalctl --user \
         -u hermes-gateway-admin -u hermes-gateway-assistant \
         -u hermes-gateway-cos -u hermes-gateway-curator \
@@ -47,6 +49,7 @@ show_scripts() {
     fi
 }
 
+# follow only covers system services; agent and script logs are not tailed
 if [[ $FOLLOW -eq 1 ]]; then
     sep "following system services — Ctrl-C to stop"
     sudo journalctl \

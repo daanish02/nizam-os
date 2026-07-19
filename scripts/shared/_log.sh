@@ -10,10 +10,12 @@ _nizam_log() {
     local level="$1"; shift
     local msg="$*"
     local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    # minimal escaping — backslash and quote only; tabs/newlines in msg will break the JSON line
     local escaped_msg="${msg//\\/\\\\}"
     escaped_msg="${escaped_msg//\"/\\\"}"
     local line="{\"ts\":\"${ts}\",\"level\":\"${level}\",\"script\":\"${SCRIPT_NAME:-script}\",\"msg\":\"${escaped_msg}\"}"
 
+    # JSON when piped — structured output for journald ingestion
     if [ -t 1 ]; then
         case "$level" in
             INFO)    printf '\033[0;32m[INFO]\033[0m  %s %s\n' "$ts" "$msg" ;;
