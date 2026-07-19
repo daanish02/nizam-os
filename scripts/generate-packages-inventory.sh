@@ -5,6 +5,7 @@ set -euo pipefail
 
 echo "=== APT PACKAGES ==="
 
+# showmanual: manually-installed only — excludes auto-pulled dependencies
 apt-mark showmanual | while read -r pkg; do
     dpkg-query -W -f='${Package} | ${Version}\n' "$pkg" 2>/dev/null
 done | sort
