@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS audit.log (
     schema_name  TEXT        NOT NULL,
     table_name   TEXT        NOT NULL,
     operation    TEXT        NOT NULL CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE')),
-    actor        TEXT        NOT NULL,
-    row_id       BIGINT,
+    actor        TEXT        NOT NULL,  -- application-supplied caller identifier; not auto-populated
+    row_id       BIGINT,               -- nullable: not all audit events map to a single table row
     before_state JSONB,
     after_state  JSONB,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
