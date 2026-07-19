@@ -24,6 +24,7 @@ decrypt_file() {
 
     local tmp
     tmp=$(mktemp)
+    # atomic write — avoids corrupt .env if sops fails mid-output
     sops \
         --decrypt \
         --input-type dotenv \
