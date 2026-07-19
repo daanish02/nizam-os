@@ -1,6 +1,6 @@
 server:
-  http_listen_port: 9081
-  grpc_listen_port: 0
+  http_listen_port: 9081  # non-default: avoids collision with dotfiles Promtail on 9080
+  grpc_listen_port: 0    # gRPC disabled — not needed for HTTP push-to-Loki mode
 
 positions:
   filename: /var/lib/promtail/positions-nizam-os.yaml

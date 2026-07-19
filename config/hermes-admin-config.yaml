@@ -54,14 +54,14 @@ platform_toolsets:
 smart_model_routing:
   enabled: false
 session_reset:
-  mode: none
+  mode: none  # preserves context across Discord messages in the same channel
 stt:
   enabled: false
 security:
   tirith_enabled: true
   tirith_path: tirith
   tirith_timeout: 5
-  tirith_fail_open: true
+  tirith_fail_open: true  # allow tool execution if tirith security check times out
   redact_secrets: true
   allow_lazy_installs: false
 discord:
@@ -78,6 +78,7 @@ discord:
 approvals:
   mode: manual
   cron_mode: manual
+# only restart/start — stop and status intentionally excluded
 command_allowlist:
   - systemctl restart litellm-proxy
   - systemctl start litellm-proxy

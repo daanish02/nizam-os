@@ -8,7 +8,7 @@ model_list:
       extra_headers:
         HTTP-Referer: "https://nizam-os"
         X-Title: "Nizam-OS"
-  - model_name: "*"
+  - model_name: "*"  # catch-all: routes any unmatched model name to openrouter; named entries above take precedence
     litellm_params:
       model: "openrouter/*"
       api_key: os.environ/OPENROUTER_API_KEY
@@ -26,9 +26,9 @@ litellm_settings:
     supported_call_types:
       - acompletion
       - completion
-  drop_params: true
+  drop_params: true  # strips hermes-specific params before forwarding — required for openrouter compatibility
   request_timeout: 600
-  store_end_user: true
+  store_end_user: true  # records Discord user IDs in LiteLLM spend logs
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
