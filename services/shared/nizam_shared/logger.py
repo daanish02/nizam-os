@@ -1,3 +1,5 @@
+"""Structured JSON logger writing to stderr. Pass extra={'module': ..., 'func': ...} for context fields."""
+
 import json
 import logging
 import sys
@@ -18,6 +20,7 @@ class _JsonFormatter(logging.Formatter):
             val = record.__dict__.get(key)
             if val is not None:
                 entry[key] = val
+        # Merge caller-supplied extra={} fields into the JSON record.
         for key, val in record.__dict__.items():
             if key not in logging.LogRecord.__dict__ and not key.startswith("_") and key not in entry:
                 entry[key] = val

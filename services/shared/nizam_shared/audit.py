@@ -1,3 +1,5 @@
+"""Append-only audit log writer. Uses an independent DB connection per write so records commit even if the caller's transaction rolls back."""
+
 import json
 
 import psycopg
@@ -24,6 +26,7 @@ class AuditLogger:
         before_state: dict | None = None,
         after_state: dict | None = None,
     ) -> None:
+        """Insert one audit record: actor, schema/table/operation, row_id, before/after JSON."""
         with psycopg.connect(self._dsn, autocommit=True) as conn:
             conn.execute(
                 """

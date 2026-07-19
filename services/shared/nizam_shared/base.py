@@ -1,3 +1,5 @@
+"""ServiceBase — shared DB, Redis, and audit wiring for nizam-os MCP services. Requires POSTGRES_DSN env var."""
+
 import os
 from contextlib import contextmanager
 from typing import Generator
