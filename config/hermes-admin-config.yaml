@@ -1,9 +1,16 @@
+_config_version: 33
+
 model:
   default: deepseek/deepseek-v4-flash
   provider: custom
   base_url: http://localhost:4000
   api_mode: chat_completions
   api_key: ${LITELLM_VIRTUAL_KEY_ADMIN}
+custom_providers:
+  - name: Local (localhost:4000)
+    base_url: http://localhost:4000
+    model: deepseek/deepseek-v4-flash
+    api_mode: chat_completions
 agent:
   disabled_toolsets:
     - browser
@@ -41,12 +48,6 @@ display:
 memory:
   memory_enabled: false
   user_profile_enabled: false
-_config_version: 33
-custom_providers:
-  - name: Local (localhost:4000)
-    base_url: http://localhost:4000
-    model: deepseek/deepseek-v4-flash
-    api_mode: chat_completions
 platform_toolsets:
   cli:
     - file
@@ -67,16 +68,17 @@ security:
 discord:
   require_mention: false
   allowed_channels:
-    - ${DISCORD_CHANNEL_ALERTS}
-    - ${DISCORD_CHANNEL_LOGS}
-    - ${DISCORD_CHANNEL_ADMIN}
-    - ${DISCORD_CHANNEL_SANDBOX}
+    - 1517682798595539045  # alerts
+    - 1519774449086234674  # logs
+    - 1518347733109313596  # admin
+    - 1520537129653108857  # sandbox
   auto_thread: true
   history_backfill: true
   history_backfill_limit: 50
   reactions: true
 approvals:
   mode: manual
+  timeout: 60
   cron_mode: manual
 # only restart/start — stop and status intentionally excluded
 command_allowlist:
@@ -106,3 +108,6 @@ command_allowlist:
   - systemctl start postgresql
   - systemctl restart redis-server
   - systemctl start redis-server
+onboarding:
+  seen:
+    profile_build_offered: true

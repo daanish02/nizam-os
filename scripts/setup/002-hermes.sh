@@ -126,7 +126,7 @@ sudo -u vazir yq -yi '.security.allow_lazy_installs = false' "$CONFIG"
 
 # discord block
 sudo -u vazir yq -yi '.discord.require_mention = false' "$CONFIG"
-sudo -u vazir yq -yi '.discord.allowed_channels = ["${DISCORD_CHANNEL_ALERTS}", "${DISCORD_CHANNEL_LOGS}", "${DISCORD_CHANNEL_ADMIN}", "${DISCORD_CHANNEL_SANDBOX}"]' "$CONFIG"
+sudo -u vazir yq -yi ".discord.allowed_channels = [$DISCORD_CHANNEL_ALERTS, $DISCORD_CHANNEL_LOGS, $DISCORD_CHANNEL_ADMIN, $DISCORD_CHANNEL_SANDBOX]" "$CONFIG"
 sudo -u vazir yq -yi '.discord.auto_thread = true' "$CONFIG"
 sudo -u vazir yq -yi '.discord.history_backfill = true' "$CONFIG"
 sudo -u vazir yq -yi '.discord.history_backfill_limit = 50' "$CONFIG"

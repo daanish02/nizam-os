@@ -66,6 +66,8 @@
 - `#admin` → `DISCORD_CHANNEL_ADMIN`
 - `#sandbox` → `DISCORD_CHANNEL_SANDBOX`
 
+> These IDs are written as literal integers into `hermes-admin-config.yaml` by `002-hermes.sh` (not as `${VAR}` references — the discord adapter reads `allowed_channels` at startup before the profile secret scope is active, so env var expansion doesn't work there).
+
 **Create Grafana alert webhooks:**
 - `#alerts` → Server Settings → Integrations → Webhooks → New Webhook → copy URL → `DISCORD_WEBHOOK_WARNING`
 - `#alerts` Server Settings → Integrations → Webhooks → New Webhook → copy URL → `DISCORD_WEBHOOK_CRITICAL`
