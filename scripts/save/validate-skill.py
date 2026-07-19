@@ -44,6 +44,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def validate(path: Path) -> list[str]:
+    """Validate parsed skill frontmatter. Returns list[str] of error messages; empty list = valid."""
     errors: list[str] = []
 
     if not path.exists():

@@ -4,28 +4,10 @@
 # dependencies = ["requests"]
 # ///
 """
-Watches ~/.hermes/profiles/*/pending/skills/ via inotify and fires a Discord embed
-when a new skill lands in the approval queue. Logs proposed/approved/rejected to
-each profile's skills/.audit.json.
-
-Requires:
-  DISCORD_ADMIN_WEBHOOK — set in secrets/nizam-os.env (loaded by systemd EnvironmentFile)
-
-State files (survive restarts):
-  ~/.hermes/pending/.skill_notified     — set of already-notified pending keys
-  ~/.hermes/pending/.skill_pending_map  — map of pending_filename → {profile, skill_name}
-                                          used to detect rejection when pending JSON deleted
-
-Pending file format (Hermes write_approval.py):
-  {
-    "id": "8d3a622c",
-    "subsystem": "skills",
-    "action": "create",
-    "summary": "create 'test-skill-a' — ...",
-    "origin": "assistant_tool",
-    "created_at": 1782553910.996,
-    "payload": { "action": "create", "name": "test-skill-a", "content": "---...", "category": "..." }
-  }
+inotify watcher for Hermes skill approval queue; fires Discord embed on new pending skill.
+Logs proposed/approved/rejected to each profile's skills/.audit.json.
+Requires: DISCORD_ADMIN_WEBHOOK (secrets/nizam-os.env via systemd EnvironmentFile).
+State: ~/.hermes/pending/.skill_notified (notified set), ~/.hermes/pending/.skill_pending_map (pending→profile+skill).
 """
 
 import json
@@ -125,6 +107,7 @@ def skill_body_excerpt(content: str, max_chars: int = 800) -> str:
 # ── Discord ───────────────────────────────────────────────────────────────────
 
 def send_discord(record: dict) -> None:
+    """Post a Discord embed for a pending skill approval request."""
     if not WEBHOOK_URL:
         log.warning("DISCORD_ADMIN_WEBHOOK not set — cannot notify")
         return
@@ -177,6 +160,7 @@ def send_discord(record: dict) -> None:
 # ── Audit log ─────────────────────────────────────────────────────────────────
 
 def write_audit(profile: str, event: str, skill: str, actor: str, note: str = "") -> None:
+    """Append an audit event to the profile's skills/.audit.json."""
     path = NIZAM_PROFILES / profile / "skills" / ".audit.json"
     try:
         entries = json.loads(path.read_text()) if path.exists() else []
@@ -244,7 +228,6 @@ def on_skill_created(path: Path, pending_map: dict) -> None:
     except (ValueError, IndexError):
         return
 
-    # Find and remove from pending_map by skill_name + profile
     matched_file = None
     for fname, entry in pending_map.items():
         if entry["profile"] == profile and entry["skill_name"] == skill_name:

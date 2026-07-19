@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 """
-Idempotent SAVE governance setup for a Hermes profile.
-
-Run for any profile — safe to re-run, skips steps already done.
-
-Steps:
-  1. Patch config.yaml: skills.write_approval + skills.guard_agent_created → true
-  2. Create skills/.audit.json as [] if missing
-  3. Wire pending/ symlink: migrate ~/.hermes/profiles/{p}/pending/ → nizam-os + symlink
-
-Usage:
-  python3 scripts/save/setup-profile-governance.py admin
-  python3 scripts/save/setup-profile-governance.py assistant
+Idempotent SAVE governance setup for a Hermes profile. Safe to re-run.
+Steps: (1) patch config.yaml write_approval+guard_agent_created→true, (2) create skills/.audit.json,
+       (3) wire pending/ symlink (migrate ~/.hermes/profiles/{p}/pending/ → nizam-os repo + symlink).
+Usage: python3 scripts/save/setup-profile-governance.py admin [assistant ...]  or --all
 """
 
 import json
@@ -29,6 +21,8 @@ def patch_config(profile: str) -> None:
         print(f"  [skip] config.yaml not found for {profile}")
         return
 
+    # Parse line-by-line rather than yaml.dump to avoid rewriting auto-generated
+    # comments and disrupting key ordering in the config file.
     lines = config.read_text().splitlines(keepends=True)
     in_skills = False
     changed = False
@@ -73,6 +67,7 @@ def init_audit(profile: str) -> None:
 
 
 def wire_pending(profile: str) -> None:
+    """Move existing pending/ dir into nizam-os repo, then replace with a symlink."""
     hermes_pending = HERMES_PROFILES / profile / "pending"
     nizam_pending = NIZAM_PROFILES / profile / "pending"
 

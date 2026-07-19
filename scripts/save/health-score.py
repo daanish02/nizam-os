@@ -4,23 +4,9 @@
 # dependencies = []
 # ///
 """
-Reads .usage.json from all Hermes profile skill dirs and outputs a health score
-table. Optionally writes state flags back to .usage.json.
-
-Health score (0–100):
-  Recency  (40 pts): last_used_at within 7d→40, 30d→20, 60d→5, never→0
-  Volume   (30 pts): use_count ≥10→30, ≥5→20, ≥1→10, 0→0
-  Churn    (30 pts): patch_count/max(use_count,1) <0.5→30, <1→15, ≥1→0
-
-Flags written back (--write flag required):
-  score < 30 AND use_count ≥ 3  → state: needs_review
-  score < 10                     → state: archive_candidate
-  last_used_at > 90d (or never used + created > 30d) → state: stale
-
-Usage:
-  python3 scripts/save/health-score.py              # table only
-  python3 scripts/save/health-score.py --write      # table + write state flags
-  python3 scripts/save/health-score.py --profile admin  # single profile
+Reads .usage.json from all Hermes profile skill dirs; outputs a health score table.
+Scores skills 0–100 via (recency, volume, churn) → score + flag. Use --write to persist flags.
+Flags: needs_review (score<30, use≥3), archive_candidate (score<10), stale (>90d or never+>30d).
 """
 
 import json
@@ -36,6 +22,7 @@ STALE_NEVER_DAYS = 30  # never-used skill stale after this many days since creat
 
 
 def score(entry: dict, now: datetime) -> tuple[int, str]:
+    """Returns (total_score: int, flag: str). Weights: recency 40%, volume 30%, churn 30%."""
     use_count = entry.get("use_count") or 0
     patch_count = entry.get("patch_count") or 0
     last_used_raw = entry.get("last_used_at")
