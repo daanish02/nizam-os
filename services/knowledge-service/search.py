@@ -5,6 +5,7 @@ from embedder import embed_query
 
 
 def _rrf(rank: int, k: int = 60) -> float:
+    """Reciprocal Rank Fusion score for rank r. k=60 is the standard default."""
     return 1.0 / (k + rank)
 
 
@@ -75,6 +76,8 @@ def hybrid_search(
         vec_rank = {doc_id: i + 1 for i, (doc_id, _) in enumerate(vec_hits)}
         all_ids = set(bm25_rank) | set(vec_rank)
 
+        # RRF rather than weighted sum: rank-based fusion avoids normalising
+        # incompatible BM25 and cosine score scales.
         scored = []
         for doc_id in all_ids:
             score = 0.0

@@ -8,7 +8,7 @@ import httpx
 from nizam_shared.base import ServiceBase
 
 _MODEL = "google/gemini-embedding-2"
-_MAX_CHARS = 8000  # truncate before sending
+_MAX_CHARS = 8000  # embedding model's effective context limit, not a cost cap
 
 
 def _embed(text: str, api_key: str) -> list[float]:

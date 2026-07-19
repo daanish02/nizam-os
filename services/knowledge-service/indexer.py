@@ -29,7 +29,7 @@ def upsert_note(
     date_created: date | None = None,
     date_modified: date | None = None,
 ) -> int:
-    """Upsert a note into vault_index. Returns the row id."""
+    """Upsert a note into vault_index. Conflict key is file_path; all other fields update on conflict."""
     chash = content_hash(content)
     with svc.db() as conn:
         row = conn.execute(

@@ -26,6 +26,10 @@ def _extract_video_id(url_or_id: str) -> str:
 
 
 def _is_blocked(msg: str) -> bool:
+    """Check for YouTube bot-block signals in an error message before attempting parse.
+
+    Detects IP bans, HTTP 429/403 rate-limit responses, and explicit block wording.
+    """
     return any(k in msg for k in ("ip", "block", "429", "too many", "forbidden", "403"))
 
 
@@ -50,6 +54,7 @@ def _parse_vtt(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _tier1(video_id: str, languages: list[str]) -> dict:
+    """Fetch via youtube-transcript-api (no API key). Returns transcript dict on success, error dict on failure."""
     from youtube_transcript_api import YouTubeTranscriptApi
 
     api = YouTubeTranscriptApi()
@@ -87,6 +92,7 @@ def _tier1(video_id: str, languages: list[str]) -> dict:
 # ---------------------------------------------------------------------------
 
 def _tier2(video_id: str) -> dict:
+    """Fetch via yt-dlp subtitle download (browser-like path). Returns parsed VTT dict on success, error dict on failure."""
     url = f"https://www.youtube.com/watch?v={video_id}"
     cookies_file = os.environ.get("YOUTUBE_COOKIES_FILE", "")
 
@@ -143,6 +149,7 @@ def _tier2(video_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _tier3(video_id: str) -> dict:
+    """Fetch via YouTube Data API v3 (requires YOUTUBE_API_KEY). Returns caption or metadata dict on success, error dict on failure."""
     import httpx
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
