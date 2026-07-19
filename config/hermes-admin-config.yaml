@@ -11,6 +11,23 @@ custom_providers:
     base_url: http://localhost:4000
     model: deepseek/deepseek-v4-flash
     api_mode: chat_completions
+model_catalog:
+  enabled: true
+  url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
+  ttl_hours: 1
+  providers: {}
+compression:
+  enabled: true
+  threshold: 0.6
+  target_ratio: 0.3
+  protect_last_n: 10
+  hygiene_hard_message_limit: 5000
+  protect_first_n: 3
+  abort_on_summary_failure: true
+  codex_gpt55_autoraise: true
+  in_place: false
+context:
+  engine: compressor
 agent:
   disabled_toolsets:
     - browser
@@ -41,30 +58,95 @@ agent:
     - web
     - x_search
     - yuanbao
-compression:
-  enabled: false
+delegation:
+  model: ''
+  provider: ''
+  base_url: ''
+  api_key: ''
+  api_mode: ''
+  inherit_mcp_toolsets: true
+  max_iterations: 50
+  child_timeout_seconds: 0
+  reasoning_effort: ''
+  max_concurrent_children: 3
+  max_async_children: 3
+  max_spawn_depth: 1
+  orchestrator_enabled: false
+  subagent_auto_approve: false
+goals:
+  max_turns: 20
+prompt_caching:
+  cache_ttl: 5m
+openrouter:
+  response_cache: true
+  response_cache_ttl: 300
+  min_coding_score: 0.65
+tools:
+  tool_search:
+    enabled: auto
+    threshold_pct: 10
+    search_default_limit: 5
+    max_search_limit: 20
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
 display:
   tool_progress: all
 memory:
   memory_enabled: false
   user_profile_enabled: false
+  write_approval: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+skills:
+  external_dirs: []
+  template_vars: true
+  inline_shell: false
+  inline_shell_timeout: 10
+  guard_agent_created: true
+  write_approval: true
+curator:
+  enabled: false
+  interval_hours: 168
+  min_idle_hours: 2
+  stale_after_days: 30
+  archive_after_days: 90
+  consolidate: true
+  prune_builtins: true
+  backup:
+    enabled: true
+    keep: 5
 platform_toolsets:
   cli:
     - file
     - terminal
+streaming:
+  enabled: true
+  transport: auto
+  edit_interval: 0.8
+  buffer_threshold: 24
+  cursor: ' ▉'
+  fresh_final_after_seconds: 0.0
+sessions:
+  auto_prune: true
+  retention_days: 90
+  vacuum_after_prune: true
+  min_interval_hours: 24
+  write_json_snapshots: false
 smart_model_routing:
   enabled: false
 session_reset:
   mode: none  # preserves context across Discord messages in the same channel
 stt:
   enabled: false
-security:
-  tirith_enabled: true
-  tirith_path: tirith
-  tirith_timeout: 5
-  tirith_fail_open: true  # allow tool execution if tirith security check times out
-  redact_secrets: true
-  allow_lazy_installs: false
 discord:
   require_mention: false
   allowed_channels:
@@ -76,10 +158,23 @@ discord:
   history_backfill: true
   history_backfill_limit: 50
   reactions: true
+network:
+  force_ipv4: false
+security:
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: true  # allow tool execution if tirith security check times out
+  redact_secrets: true
+  allow_lazy_installs: false
+privacy:
+  redact_pii: false
 approvals:
   mode: manual
   timeout: 60
   cron_mode: manual
+  mcp_reload_confirm: true
+  destructive_slash_confirm: true
 # only restart/start — stop and status intentionally excluded
 command_allowlist:
   - systemctl restart litellm-proxy
@@ -108,6 +203,14 @@ command_allowlist:
   - systemctl start postgresql
   - systemctl restart redis-server
   - systemctl start redis-server
+updates:
+  pre_update_backup: true
+  backup_keep: 5
+  non_interactive_local_changes: stash
+logging:
+  level: INFO
+  max_size_mb: 5
+  backup_count: 3
 onboarding:
   seen:
     profile_build_offered: true
