@@ -2,7 +2,7 @@
 Description=Run LLM metrics collector every minute
 
 [Timer]
-OnCalendar=*:0/1
+OnCalendar=*:0/1  # every minute; equivalent to OnCalendar=minutely
 Persistent=true
 
 [Install]

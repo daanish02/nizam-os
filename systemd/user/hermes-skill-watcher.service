@@ -1,6 +1,6 @@
 [Unit]
 Description=Watch Hermes pending skills and post approval requests to Discord
-After=default.target
+After=default.target network.target
 
 [Service]
 Type=simple

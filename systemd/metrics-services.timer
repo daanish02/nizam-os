@@ -3,7 +3,7 @@ Description=Run metrics-services every 5 minutes
 Requires=metrics-services.service
 
 [Timer]
-OnBootSec=60
+OnBootSec=60  # 60s boot delay — ensures monitored services are up before first check
 OnUnitActiveSec=5min
 Unit=metrics-services.service
 
