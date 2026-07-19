@@ -21,7 +21,7 @@ up=0
 metric_lines=()
 
 while IFS= read -r svc; do
-    [[ -z "$svc" || "$svc" == \#* ]] && continue
+    [[ -z "$svc" || "$svc" == \#* ]] && continue  # skip blank lines and # comments in tracked-services.txt
 
     if systemctl is-active --quiet "$svc" 2>/dev/null; then
         val=1
@@ -50,8 +50,9 @@ done < "$TRACKED"
     echo "nizam_services_up_total ${up}"
 } > "$TMP"
 
+# atomic write — node-exporter never reads a partial .prom file
 mv "$TMP" "$OUT"
-chmod 644 "$OUT"
+chmod 644 "$OUT"  # node-exporter reads textfile dir as its own user — world-readable required
 
 if [ "$up" -lt "$total" ]; then
     log_error "services degraded: ${up}/${total} up"

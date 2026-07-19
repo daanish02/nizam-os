@@ -5,31 +5,9 @@
 # ///
 """
 LLM metrics textfile writer for Prometheus node-exporter.
-Runs every 60s via systemd timer. Queries LiteLLM's /spend/logs API
-and writes /var/lib/prometheus/node-exporter/nizam-llm.prom.
-
-Metrics written:
-  Counters (cumulative, monotonically increasing):
-    nizam_llm_requests_total{model,provider,profile}
-    nizam_llm_input_tokens_total{model,provider,profile}
-    nizam_llm_output_tokens_total{model,provider,profile}
-    nizam_llm_cache_read_tokens_total{model,profile}
-    nizam_llm_cache_creation_tokens_total{model,profile}
-    nizam_llm_spend_usd_total{model,provider,profile}
-
-  Gauges (pre-aggregated for stat panels):
-    nizam_llm_requests_today
-    nizam_llm_input_tokens_today
-    nizam_llm_output_tokens_today
-    nizam_llm_spend_usd_today
-    nizam_llm_spend_usd_this_month
-    nizam_llm_cache_hit_rate_today        (0.0-1.0)
-    nizam_llm_cache_savings_usd_today
-    nizam_llm_cache_savings_usd_total
-    nizam_llm_avg_latency_ms_1h{model}
-
-  Status:
-    nizam_llm_proxy_up
+Reads LiteLLM /spend/logs every 60s (systemd timer); writes /var/lib/prometheus/node-exporter/nizam-llm.prom.
+Prefixes: nizam_llm_{requests,input_tokens,output_tokens,spend_usd,cache_read_tokens,cache_creation_tokens}_total
+  | nizam_llm_{requests,input_tokens,output_tokens,spend_usd}_today | nizam_llm_{spend_usd_this_month,cache_hit_rate_today,cache_savings_usd_today,cache_savings_usd_total,avg_latency_ms_1h,proxy_up}
 """
 
 import json
@@ -71,6 +49,7 @@ def get_redis() -> redis.Redis | None:
 
 
 def get_model_prices(r: redis.Redis | None) -> dict:
+    """Fetch per-model USD prices from Redis cache, falling back to OpenRouter API."""
     if r is not None:
         cached = r.get(REDIS_PRICE_KEY)
         if cached:
@@ -170,6 +149,7 @@ def write_fallback(proxy_up: int) -> None:
 
 
 def fetch_logs() -> list | None:
+    """Query LiteLLM DB for request rows in the last N minutes. Returns list of dicts."""
     if not LITELLM_KEY:
         log.error("LITELLM_MASTER_KEY not set — cannot fetch spend logs")
         return None
@@ -342,6 +322,7 @@ def main() -> None:
         all_cache_read_by_model[m] += v["cache_read"]
 
     def _calc_savings(cache_by_model: dict) -> float:
+        """Return (tokens_saved: int, usd_saved: float) from cache hit counts."""
         s = 0.0
         for m, cr in cache_by_model.items():
             mc = clean_model(m)

@@ -5,15 +5,8 @@
 # ///
 """
 Tool call metrics textfile writer for Prometheus node-exporter.
-Runs every 5 min via systemd timer. Parses Hermes agent.log files across
-all profiles (including rotated .1/.2/.3), counts tool calls, and writes:
-  /var/lib/prometheus/node-exporter/nizam-toolcalls.prom
-
-Metrics written:
-  nizam_tool_calls_total{profile, tool}            — all calls in retained logs
-  nizam_tool_errors_total{profile, tool}           — error calls
-  nizam_tool_calls_today{profile, tool}            — calls since midnight UTC
-  nizam_tool_duration_seconds_total{profile, tool} — cumulative wall time
+Parses Hermes agent.log files (all profiles, rotated .1/.2/.3) every 5 min; writes nizam-toolcalls.prom.
+Metrics: nizam_tool_{calls,errors,duration_seconds,output_chars}_total{profile,tool} | nizam_tool_{calls,output_chars}_today{profile,tool}
 """
 
 import logging
@@ -33,6 +26,7 @@ HERMES_PROFILES = Path.home() / ".hermes" / "profiles"
 OUT = Path("/var/lib/prometheus/node-exporter/nizam-toolcalls.prom")
 TMP = OUT.with_suffix(".prom.tmp")
 
+# groups: 1=timestamp, 2=tool_name, 3=outcome, 4=duration_s, 5=chars
 _RE_TOOL = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+"
     r".*?agent\.tool_executor: [Tt]ool ([\w]+) "
@@ -50,12 +44,14 @@ def parse_ts(ts_str: str) -> datetime | None:
 
 
 def main() -> None:
+    # ── Time and accumulator setup ────────────────────────────────────────────
     now = datetime.now(timezone.utc)
     today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     counts: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "errors": 0, "duration_s": 0.0, "chars": 0}))
     today: dict = defaultdict(lambda: defaultdict(lambda: {"calls": 0, "chars": 0}))
 
+    # ── Parse log files across all profiles ──────────────────────────────────
     for profile_dir in sorted(HERMES_PROFILES.iterdir()):
         if not profile_dir.is_dir():
             continue
@@ -95,6 +91,7 @@ def main() -> None:
             except Exception as e:
                 log.warning("failed reading %s: %s", path, e)
 
+    # ── Build Prometheus output lines ─────────────────────────────────────────
     lines: list[str] = []
 
     def section(help_text: str, metric_type: str, name: str) -> None:
@@ -132,6 +129,7 @@ def main() -> None:
         for tool, v in sorted(tools.items()):
             lines.append(f'nizam_tool_output_chars_today{{profile="{profile}",tool="{tool}"}} {v["chars"]}')
 
+    # ── Write output file atomically ──────────────────────────────────────────
     TMP.write_text("\n".join(lines) + "\n")
     TMP.replace(OUT)
     OUT.chmod(0o644)
