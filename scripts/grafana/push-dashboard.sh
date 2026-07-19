@@ -24,6 +24,7 @@ if [[ ! -f "$FILE" ]]; then
     exit 1
 fi
 
+# overwrite:True prevents duplicate dashboards; folderId:0 pins to General folder
 PAYLOAD=$(python3 -c "
 import json, sys
 dash = json.load(open('$FILE'))

@@ -22,6 +22,7 @@ fi
 DASH_UID="$1"
 FILE="$2"
 
+# Grafana wraps exports in {meta, dashboard} — unwrap to the inner object so push-dashboard.sh can re-wrap correctly
 curl -sf -u "$GRAFANA_AUTH" "$GRAFANA_URL/api/dashboards/uid/$DASH_UID" \
     | python3 -c "
 import json, sys
