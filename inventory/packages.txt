@@ -66,7 +66,7 @@ libxrandr2 | 2:1.5.2-2build1
 linux-virtual | 6.8.0-136.136
 login | 1:4.13+dfsg1-4ubuntu3.2
 loki | 3.7.2
-monarx-agent | 4.3.47-master
+monarx-agent | 4.3.50-master
 monarx-protect | 5.2.49-master
 monarx-protect-autodetect | 5.2.49-master
 ncurses-base | 6.4+20240113-1ubuntu2.1
