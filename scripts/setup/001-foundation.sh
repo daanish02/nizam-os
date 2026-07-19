@@ -91,6 +91,7 @@ else
     exit 1
 fi
 
+# Checked here rather than in sub-scripts — sub-scripts fail non-obviously on missing vars
 required_vars=(OPENROUTER_API_KEY LITELLM_MASTER_KEY POSTGRES_SVC_LITELLM_PASS LITELLM_DB_URL REDIS_URL REDIS_PASSWORD)
 missing=()
 for var in "${required_vars[@]}"; do

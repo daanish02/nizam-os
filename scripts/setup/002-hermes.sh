@@ -65,7 +65,7 @@ if [[ ! -d "$ADMIN_PROFILE_DIR" ]]; then
     exit 1
 fi
 bash "$NIZAM_OS/scripts/setup/install-symlinks.sh"
-loginctl enable-linger vazir 2>/dev/null || true
+loginctl enable-linger vazir 2>/dev/null || true  # required for --user systemd units to persist after logout
 _ok "symlinks wired, linger enabled for vazir"
 
 # Step 5: Configure admin profile config
@@ -82,13 +82,14 @@ fi
 touch "$ADMIN_ENV"
 chown vazir:vazir "$ADMIN_ENV"
 chmod 600 "$ADMIN_ENV"
+# _add_env_key — appends KEY= placeholder only if key absent; never overwrites
 _add_env_key() {
     local key="$1"
     grep -q "^${key}=" "$ADMIN_ENV" 2>/dev/null || echo "${key}=" >> "$ADMIN_ENV"
 }
 _add_env_key "DISCORD_ALLOWED_USERS"
 _add_env_key "LITELLM_VIRTUAL_KEY_ADMIN"
-# Values known from nizam-os.env — write directly (idempotent update)
+# _set_env_key — upserts KEY=VALUE; updates existing line via sed or appends if missing
 _set_env_key() {
     local key="$1" val="$2"
     if grep -q "^${key}=" "$ADMIN_ENV" 2>/dev/null; then
@@ -104,6 +105,7 @@ _set_env_key "DISCORD_CHANNEL_ADMIN"   "$DISCORD_CHANNEL_ADMIN"
 _set_env_key "DISCORD_CHANNEL_SANDBOX" "$DISCORD_CHANNEL_SANDBOX"
 _ok "hermes-admin.env: keys present"
 
+# yq-patch the auto-generated hermes config rather than keeping a static file — wizard output varies per run
 # model: api_key from env var
 sudo -u vazir yq -yi '.model.api_key = "${LITELLM_VIRTUAL_KEY_ADMIN}"' "$CONFIG"
 

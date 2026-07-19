@@ -6,7 +6,7 @@ set -euo pipefail
 : "${POSTGRES_SVC_LITELLM_PASS:?Set POSTGRES_SVC_LITELLM_PASS before running this script}"
 
 sudo -u postgres psql <<SQL
-SELECT 'CREATE DATABASE nizam' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nizam')\gexec
+SELECT 'CREATE DATABASE nizam' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nizam')\gexec -- \gexec: psql meta-command — executes the query result string as SQL
 
 DO \$\$
 BEGIN
@@ -24,8 +24,10 @@ GRANT CONNECT ON DATABASE nizam TO svc_litellm;
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- litellm schema managed by Prisma migrations — kept separate from nizam's dbmate-managed public schema
 CREATE SCHEMA IF NOT EXISTS litellm AUTHORIZATION svc_litellm;
 GRANT ALL ON SCHEMA litellm TO svc_litellm;
+-- applies to future tables created in this schema, not just existing ones
 ALTER DEFAULT PRIVILEGES IN SCHEMA litellm GRANT ALL ON TABLES TO svc_litellm;
 ALTER DEFAULT PRIVILEGES IN SCHEMA litellm GRANT ALL ON SEQUENCES TO svc_litellm;
 SQL

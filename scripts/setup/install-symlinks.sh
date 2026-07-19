@@ -36,9 +36,9 @@ HERMES_ADMIN_RUNTIME="$USER_HOME/.hermes/profiles/admin"
 # Only copies when source is a real file/dir (not already a symlink) and repo destination absent.
 _seed() {
     local src="$1" dst="$2"
-    [[ -L "$src" ]] && return   # already a symlink — repo is authoritative
-    [[ -e "$dst" ]] && return   # repo already has it
-    [[ -e "$src" ]] || return   # hermes hasn't created it yet
+    [[ -L "$src" ]] && return   # already a symlink — repo is authoritative, skip
+    [[ -e "$dst" ]] && return   # repo file exists — seed already ran
+    [[ -e "$src" ]] || return   # hermes hasn't generated this yet — skip
     cp -a "$src" "$dst"
     chown -R vazir:vazir "$dst"
     echo "  seeded: $dst"
@@ -53,14 +53,14 @@ _seed "$HERMES_ADMIN_RUNTIME/AGENTS.md"     "$NIZAM_OS/hermes/profiles/admin/AGE
 # rsync -a (no --ignore-existing) ensures all hermes content (USER.md, MEMORY.md, etc.) lands in repo.
 if [[ ! -L "$HERMES_ADMIN_RUNTIME/memories" ]] && [[ -d "$HERMES_ADMIN_RUNTIME/memories" ]]; then
     sudo -u vazir mkdir -p "$NIZAM_OS/hermes/profiles/admin/memories"
-    rsync -a --no-links "$HERMES_ADMIN_RUNTIME/memories/" "$NIZAM_OS/hermes/profiles/admin/memories/"
+    rsync -a --no-links "$HERMES_ADMIN_RUNTIME/memories/" "$NIZAM_OS/hermes/profiles/admin/memories/"  # --no-links: don't copy symlinks — prevents circular refs if a previous broken run left symlinks in the runtime dir
     chown -R vazir:vazir "$NIZAM_OS/hermes/profiles/admin/memories/"
     rm -rf "$HERMES_ADMIN_RUNTIME/memories"
     echo "  seeded: hermes/profiles/admin/memories"
 fi
 if [[ ! -L "$HERMES_ADMIN_RUNTIME/skills" ]] && [[ -d "$HERMES_ADMIN_RUNTIME/skills" ]]; then
     sudo -u vazir mkdir -p "$NIZAM_OS/hermes/profiles/admin/skills"
-    rsync -a --no-links "$HERMES_ADMIN_RUNTIME/skills/" "$NIZAM_OS/hermes/profiles/admin/skills/"
+    rsync -a --no-links "$HERMES_ADMIN_RUNTIME/skills/" "$NIZAM_OS/hermes/profiles/admin/skills/"  # --no-links: don't copy symlinks — prevents circular refs if a previous broken run left symlinks in the runtime dir
     chown -R vazir:vazir "$NIZAM_OS/hermes/profiles/admin/skills/"
     rm -rf "$HERMES_ADMIN_RUNTIME/skills"
     echo "  seeded: hermes/profiles/admin/skills"
