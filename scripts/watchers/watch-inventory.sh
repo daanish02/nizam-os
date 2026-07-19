@@ -21,6 +21,7 @@ trap 'rm -f "$TMP_PACKAGES"' EXIT
 
 "$NIZAM_OS/scripts/generate-packages-inventory.sh" > "$TMP_PACKAGES"
 
+# sha256 fast path — skip diff if content unchanged
 PACKAGES_NEW_HASH=$(sha256sum "$TMP_PACKAGES" | awk '{print $1}')
 
 if [ ! -f "$PACKAGES" ]; then
@@ -36,7 +37,7 @@ if [ "$PACKAGES_NEW_HASH" = "$PACKAGES_OLD_HASH" ]; then
     exit 0
 fi
 
-diff -u "$PACKAGES" "$TMP_PACKAGES" > "$DIFF_FILE" || true
+diff -u "$PACKAGES" "$TMP_PACKAGES" > "$DIFF_FILE" || true  # diff exits 1 when files differ — || true required under set -e
 
 cp "$TMP_PACKAGES" "$PACKAGES"
 echo "$PACKAGES_NEW_HASH" > "$PACKAGES_HASH"
@@ -69,4 +70,4 @@ fi
 cd "$NIZAM_OS"
 git add inventory/packages.txt inventory/packages.sha256 2>/dev/null || true
 git commit -m "inventory: packages updated $(date +%Y-%m-%d)" 2>/dev/null || true
-git push 2>/dev/null || log_warn "git push failed — will retry next run"
+git push 2>/dev/null || log_warn "git push failed — will retry next run"  # push failure is non-fatal; check git status manually if this warning appears

@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Bidirectional watcher for hermes NAMED PROFILE files.
-#
-# SCOPE — only ~/.hermes/profiles/<name>/ (named profiles).
-# OFF-LIMITS — ~/.hermes/{SOUL.md,config.yaml,.env,skills/,memories/} are the
-#   root/default hermes agent. This watcher NEVER touches them.
-#
-# nizam-os → .hermes: new *.md/.env/config.yaml in nizam-os profile root
-#   → auto-symlinked into ~/.hermes/profiles/{name}/
-#
-# .hermes → nizam-os: hermes creates new non-symlink file in ~/.hermes/profiles/{name}/
-#   → migrated to nizam-os, replaced with symlink back
-#   → covers: hermes profile create {name}, agent-written skills (SAVE framework)
+# Bidirectional sync for hermes named profile files (NAMED PROFILES only — never root ~/.hermes/).
+# nizam-os → .hermes: new files symlinked in; .hermes → nizam-os: new real files migrated to repo + symlinked back.
+# Covers hermes profile create and SAVE framework agent-written skills.
 set -euo pipefail
 
 NIZAM_OS="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,7 +16,7 @@ watch_nizam_to_hermes() {
         rel="${fullpath#$NIZAM_PROFILES/}"
         profile_name="${rel%%/*}"
         filename="${rel#*/}"
-        [[ "$filename" == */* ]] && continue
+        [[ "$filename" == */* ]] && continue  # depth-limit: skip events from subdirectories
 
         case "$filename" in
             *.md|.env|config.yaml) ;;
@@ -52,7 +43,7 @@ watch_hermes_to_nizam() {
         rel="${fullpath#$HERMES_PROFILES/}"
         profile_name="${rel%%/*}"
         filename="${rel#*/}"
-        [[ "$filename" == */* ]] && continue
+        [[ "$filename" == */* ]] && continue  # depth-limit: skip events from subdirectories
 
         nizam_profile="$NIZAM_PROFILES/$profile_name"
         nizam_path="$nizam_profile/$filename"
@@ -97,11 +88,17 @@ watch_env_encrypt() {
         [[ "$filename" == ".env" ]] || continue
 
         echo "hermes-profile-watcher: [env→enc] encrypting $profile_name/.env"
-        "$NIZAM_OS/scripts/env/encrypt-profile-env.sh" "$profile_name"
+        # encrypt updated profile env to secrets/
+        local env_src="$NIZAM_OS/secrets/hermes-${profile_name}.env"
+        local pubkey
+        pubkey=$(grep "public key" "$NIZAM_OS/secrets/nizam-age-key.txt" | awk '{print $NF}')
+        sops --encrypt --input-type dotenv --output-type dotenv --age "$pubkey" \
+            "$env_src" > "${env_src%.env}.env.enc"
+        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$env_src" | sed 's/=.*/=/' > "${env_src%.env}.env.example"
     done
 }
 
-trap 'kill $(jobs -p) 2>/dev/null; exit 0' EXIT INT TERM
+trap 'kill $(jobs -p) 2>/dev/null; exit 0' EXIT INT TERM  # reap all three background watcher processes on exit
 
 watch_nizam_to_hermes &
 watch_hermes_to_nizam &

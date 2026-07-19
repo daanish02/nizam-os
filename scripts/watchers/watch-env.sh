@@ -10,6 +10,7 @@ source "$NIZAM_OS/scripts/shared/_log.sh"
 SECRETS="$NIZAM_OS/secrets"
 export SOPS_AGE_KEY_FILE="$SECRETS/nizam-age-key.txt"
 
+# process_env — encrypt FILE to .enc, regenerate .example, commit+push. Args: $1=absolute path to .env file
 process_env() {
     local env_file="$1"
     local base
@@ -38,15 +39,16 @@ process_env() {
     git -C "$NIZAM_OS" add "$enc_rel" "$example_rel"
     git -C "$NIZAM_OS" diff --cached --quiet || \
         git -C "$NIZAM_OS" commit -m "inventory: $(basename "$env_file") updated $(date +%Y-%m-%d)"
+    # push failure exits under set -e, killing this watcher service — check watcher-env status if pushes fail
     git -C "$NIZAM_OS" push
     log_info "$base: done"
 }
 
 log_info "watching $SECRETS for *.env changes"
 
-inotifywait -m -e close_write --format '%f' "$SECRETS" | while read -r filename; do
+inotifywait -m -e close_write --format '%f' "$SECRETS" | while read -r filename; do # close_write fires after the writer closes the fd — avoids partial-write races that modify would trigger
     # Only process plain .env files — ignore .enc, .example, .txt, etc.
     [[ "$filename" =~ \.env$ ]] || continue
-    [[ "$filename" =~ \.enc\.env$ ]] && continue
+    [[ "$filename" =~ \.enc\.env$ ]] && continue  # defence-in-depth: .enc.env cannot reach here but guard kept for clarity
     process_env "$SECRETS/$filename"
 done
