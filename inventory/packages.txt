@@ -101,7 +101,7 @@ redis-server | 5:7.0.15-1ubuntu0.24.04.4
 ripgrep | 14.1.0-1
 shim-signed | 1.58+15.8-0ubuntu1
 ssh-import-id | 5.11-0ubuntu2.24.04.1
-tailscale | 1.98.8
+tailscale | 1.102.2
 tailscale-archive-keyring | 1.35.181
 tree | 2.1.1-2ubuntu3.24.04.2
 ubuntu-minimal | 1.539.2
