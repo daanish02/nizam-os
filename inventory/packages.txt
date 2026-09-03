@@ -123,6 +123,7 @@ dbmate
 sops
 yt-dlp
 admin
+curator
 env
 env.fish
 hermes
