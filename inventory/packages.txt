@@ -28,7 +28,7 @@ fonts-wqy-zenhei | 0.9.45-8
 fzf | 0.44.1-1ubuntu0.3
 gettext-base | 0.21-14ubuntu2
 git | 1:2.43.0-1ubuntu7.3
-gnupg | 2.4.4-2ubuntu17.4
+gnupg | 2.4.4-2ubuntu17.6
 grafana | 13.1.0
 grep | 3.11-4build1
 grub-pc | 2.12-1ubuntu7.3
@@ -75,8 +75,8 @@ ncurses-term | 6.4+20240113-1ubuntu2.2
 net-tools | 2.10-0.1ubuntu4.4
 nodejs | 18.19.1+dfsg-6ubuntu5
 npm | 9.2.0~ds1-2
-openssh-server | 1:9.6p1-3ubuntu13.18
-openssh-sftp-server | 1:9.6p1-3ubuntu13.18
+openssh-server | 1:9.6p1-3ubuntu13.19
+openssh-sftp-server | 1:9.6p1-3ubuntu13.19
 postgresql | 16+257build1.1
 postgresql-16-pg-search | 0.24.0
 postgresql-16-pgvector | 0.6.0-1
