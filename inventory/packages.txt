@@ -48,7 +48,7 @@ libdrm2 | 2.4.125-1ubuntu0.1~24.04.2
 libeatmydata1 | 131-1ubuntu1
 libffi-dev | 3.4.6-1build1
 libfontconfig1 | 2.15.0-1.1ubuntu2
-libfreetype6 | 2.13.2+dfsg-1ubuntu0.1
+libfreetype6 | 2.13.2+dfsg-1ubuntu0.2
 libgbm1 | 25.2.8-0ubuntu0.24.04.2
 libglib2.0-0t64 | 2.80.0-6ubuntu3.9
 libnspr4 | 2:4.35-1.1build1
@@ -66,7 +66,7 @@ libxrandr2 | 2:1.5.2-2build1
 linux-virtual | 6.8.0-142.142
 login | 1:4.13+dfsg1-4ubuntu3.2
 loki | 3.7.2
-monarx-agent | 4.3.76-master
+monarx-agent | 4.3.78-master
 monarx-protect | 5.2.70-master
 monarx-protect-autodetect | 5.2.70-master
 ncurses-base | 6.4+20240113-1ubuntu2.2
@@ -75,6 +75,7 @@ ncurses-term | 6.4+20240113-1ubuntu2.2
 net-tools | 2.10-0.1ubuntu4.4
 nodejs | 18.19.1+dfsg-6ubuntu5
 npm | 9.2.0~ds1-2
+openjdk-17-jre-headless | 17.0.20.1+1-1~24.04
 openssh-server | 1:9.6p1-3ubuntu13.19
 openssh-sftp-server | 1:9.6p1-3ubuntu13.19
 postgresql | 16+257build1.1
@@ -97,7 +98,7 @@ python3-pyrsistent | 0.20.0-1build2
 python3-serial | 3.5-2
 python3-tz | 2024.1-2
 qemu-guest-agent | 1:8.2.2+ds-0ubuntu1.17
-redis-server | 5:7.0.15-1ubuntu0.24.04.4
+redis-server | 5:7.0.15-1ubuntu0.24.04.5
 ripgrep | 14.1.0-1
 shim-signed | 1.58+15.8-0ubuntu1
 ssh-import-id | 5.11-0ubuntu2.24.04.1
