@@ -1,0 +1,74 @@
+# Toolchain and framework version pins — the single declaration.
+#
+# Read by scripts/scaffold/*.sh (to pin what they install and to preflight the
+# machine) and by scripts/audit-mechanical.py (to detect drift afterwards).
+#
+# Why this file exists rather than a literal in each script: the pins were
+# already written in the convention prose, and nextjs-frontend.sh installed
+# `create-next-app@latest` anyway — a live run got Next 16.3.4 against a
+# documented pin of ~15.3.0. Two copies of a fact drift and nothing notices;
+# D-003 records the same failure with the tag table. The prose now cites this
+# file rather than restating the numbers.
+#
+# SCOPE: toolchain and framework only — things whose major/minor break builds
+# and APIs. Application libraries (zod, fastapi, pytest, ...) are deliberately
+# NOT pinned here: the lockfile already makes those reproducible, and a second
+# place to update means this file ossifies and starts scaffolding stale
+# libraries.
+#
+# `check` is the command that prints the installed version; `extract` is the
+# regex whose first capture group is the version within that output.
+
+[tools.uv]
+range = ">=0.12.0,<0.13.0"
+check = "uv --version"
+extract = 'uv (\d+\.\d+\.\d+)'
+install = "https://docs.astral.sh/uv/getting-started/installation/"
+rationale = "uv's minor releases sometimes change resolver behaviour."
+
+[tools.python]
+range = ">=3.12,<3.13"
+# `uv run python -V`, not `python -V`: it reports the interpreter uv actually
+# resolves for the project, which is the one that will run the code. The bare
+# `python` on PATH is frequently a different minor (a real machine here has
+# 3.14 on PATH while uv resolves 3.12) — checking that would pass or fail for
+# reasons unrelated to what gets used.
+check = "uv run python -V"
+extract = 'Python (\d+\.\d+\.\d+)'
+install = "uv python install 3.12"
+rationale = "Minor bumps break silently when the runtime differs from the pin."
+
+[tools.bun]
+range = ">=1.3.0,<1.4.0"
+check = "bun --version"
+extract = '(\d+\.\d+\.\d+)'
+install = "https://bun.sh/docs/installation"
+rationale = "Bun minor releases can change module resolution and lockfile format."
+
+[tools.go]
+range = ">=1.24.0,<1.25.0"
+check = "go version"
+extract = 'go(\d+\.\d+\.\d+)'
+install = "https://go.dev/doc/install"
+rationale = "Go modules do not support ranges; go.mod locks an exact minor."
+
+# Frameworks installed by the scaffold scripts. `pin` is passed verbatim to the
+# installer; `verify` is the range the result must satisfy afterwards.
+
+[frameworks.next]
+pin = "15.3"
+verify = ">=15.3.0,<15.4.0"
+rationale = "Next.js minor releases can break App Router behaviour."
+
+[frameworks.typescript]
+pin = "5.8"
+verify = ">=5.8.0,<5.9.0"
+rationale = "Minor TS releases occasionally tighten type-checking in breaking ways."
+
+[frameworks.create-next-app]
+pin = "15.3"
+rationale = "Must match the `next` pin — create-next-app installs its own version."
+
+[frameworks.shadcn]
+pin = "4.21"
+rationale = "Pinned so a CLI change cannot alter the generated component surface mid-project. Its init flags are version-specific (4.x: `-b radix -p nova`; 2.x used `-b` for a base colour and had no `-p`), and 2.x cannot parse Tailwind v4 CSS at all — re-verify the flags in nextjs-frontend.sh when changing this."

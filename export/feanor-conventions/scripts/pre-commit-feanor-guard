@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Feanor branch guard — installed as .git/hooks/pre-commit AND .git/hooks/pre-merge-commit
+# by install.sh. Blocks feanor/, .feanor/, and CLAUDE.md from ever being
+# committed onto the main branch, per feanor/README.md's branch-scoping rule:
+# they may exist on feature branches and qa — never on main.
+set -e
+
+PROTECTED_BRANCH="main"
+# symbolic-ref, not rev-parse --abbrev-ref: on an unborn HEAD (the very
+# first commit in a repo, before any commit exists), rev-parse prints the
+# literal string "HEAD" to stdout while still exiting non-zero, which
+# silently defeats a `|| echo ""` fallback — the failed command's own
+# output survives. symbolic-ref correctly resolves the branch name in that
+# case too. Found by testing a real root-commit scenario, not assumed.
+CURRENT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
+
+if [ "$CURRENT_BRANCH" != "$PROTECTED_BRANCH" ]; then
+  exit 0
+fi
+
+OFFENDING="$(git diff --cached --name-only | grep -E '^(feanor/|\.feanor/|CLAUDE\.md$)' || true)"
+
+STAGED_FEANOR_MD="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^feanor/.*\.md$' || true)"
+
+STAGED_FEANOR="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^feanor/' || true)"
+
+if [ -z "$OFFENDING" ] && [ -n "$STAGED_FEANOR" ]; then
+  # A convention with broken frontmatter, a tag pointing at a missing file, or a
+  # reference to a file that does not exist are all invisible at runtime — the
+  # agent simply works without those rules and nothing errors. Catch them here.
+  # Skipped (not failed) when uv is unavailable: the hook's job is the branch
+  # guard below, and this must never block a commit on missing tooling.
+  if command -v uv >/dev/null 2>&1 && [ -f feanor/scripts/check-all.sh ]; then
+    if ! bash feanor/scripts/check-all.sh; then
+      echo ""
+      echo "BLOCKED: feanor self-consistency gates failed (see above)."
+      echo "Fix them, run the failing gate with --override \"<reason>\", or commit with --no-verify."
+      exit 1
+    fi
+  fi
+fi
+
+if [ -n "$OFFENDING" ]; then
+  echo ""
+  echo "BLOCKED: feanor/, .feanor/, and CLAUDE.md must not exist on '$PROTECTED_BRANCH'."
+  echo "They're per-project dev-workflow tooling scoped to feature branches and qa only."
+  echo ""
+  echo "Offending paths staged for this commit:"
+  echo "$OFFENDING" | sed 's/^/  /'
+  echo ""
+  echo "What to do next:"
+  echo "  git rm -r --cached feanor/ .feanor/ CLAUDE.md 2>/dev/null"
+  echo "  git commit -m \"chore: strip feanor before release\""
+  echo ""
+  echo "Do this on the release/* or qa branch BEFORE merging into main, not on main itself."
+  echo ""
+  exit 1
+fi
+
+exit 0

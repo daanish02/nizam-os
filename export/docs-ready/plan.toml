@@ -1,0 +1,1200 @@
+# nizam-os cycle 1 — the full ticket plan, Phases 1 to 7.
+#
+# Lives at docs/plan.toml in the new repo. Driven by Feanor's plan.py:
+#   uv run --with tomlkit --with rich python export/feanor-conventions/scripts/plan.py check|status|next|verify|done
+#
+# TDD is mandatory. For every code ticket:
+#   1. Write the named tests in acceptance_criteria first, and watch them fail.
+#   2. Then write the code.
+#   3. `plan.py verify` runs verification_command; only then `plan.py done`.
+# Acceptance-criteria prefixes:
+#   [slow]      integration test against a real, throwaway Postgres database
+#               (the `pg` fixture); runs under `check.sh --all`.
+#   [property]  hypothesis property-based test.
+#   (none)      fast unit test.
+# Conventions, fixtures and the coverage gate: docs/TESTING.md.
+# Ticket ids are TICK-<phase><nn>. Branch-name checks in check-git.py don't
+# apply: the owner commits manually after each phase.
+
+# ============================ PHASE 1 — tooling, secrets, host deps ============================
+
+[[tickets]]
+id = "TICK-101"
+phase = 1
+title = "Python project skeleton, check.sh, coverage gate"
+status = "todo"
+description = "Root pyproject.toml for a single `nizam` package, uv, requires-python >=3.12,<3.13. Dev deps: ruff, pytest, pytest-asyncio, pytest-cov, hypothesis, respx (httpx mocking), prometheus-client (metrics format parser in tests). Ruff line-length 100. pytest markers: slow, property. nizam/__init__.py (version). scripts/check.sh: fast mode runs ruff check, ruff format --check, and pytest -m 'not slow'. `--all` mode runs ruff, then pytest over everything including slow, then coverage via scripts/coverage_gate.py. The gate reads coverage.json and enforces >=90% line coverage on each of nizam/core, nizam/calc and nizam/finance, and >=80% on nizam overall. A package with no source files yet is skipped, not failed."
+acceptance_criteria = [
+  "tests/scripts/test_coverage_gate.py::test_passes_when_all_thresholds_met — synthetic coverage.json: core 95, calc 92, finance 91, overall 85 → exit 0",
+  "::test_fails_naming_package_below_90 — core at 89.9 → non-zero exit, and the message names nizam/core and 89.9",
+  "::test_fails_when_overall_below_80",
+  "::test_skips_package_with_no_source_files — nizam/finance absent → not counted, no failure",
+  "::test_rejects_missing_coverage_json_with_clear_error",
+  "`bash scripts/check.sh` exits 0 on the skeleton",
+]
+target_files = ["pyproject.toml", "nizam/__init__.py", "scripts/check.sh", "scripts/coverage_gate.py", "tests/conftest.py", "tests/scripts/test_coverage_gate.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "testing"]
+spec_ref = "docs/TESTING.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = []
+tests_passing = false
+
+[[tickets]]
+id = "TICK-102"
+phase = 1
+title = ".gitignore, .sops.yaml, age key (secrets never exist un-ignored)"
+status = "todo"
+description = "Write .gitignore BEFORE any secret exists. It covers secrets/*.env (keeping !secrets/*.env.example), *.key, keys.txt, .venv/, __pycache__/, the ruff/pytest/coverage caches, coverage.json, .run/ and *cookies*. Generate the age key into ~/.config/sops/age/keys.txt (mode 600) — this is a manual step by the agent; tell Danish to store an offline copy. .sops.yaml creation_rules: path_regex secrets/.*\\.env$, age: <public key>."
+acceptance_criteria = [
+  "`git check-ignore secrets/nizam-os.env` exits 0 (ignored)",
+  "`git check-ignore secrets/nizam-os.env.example` exits 1 (tracked)",
+  "~/.config/sops/age/keys.txt exists with mode 600, and is not inside the repo",
+  "Danish has confirmed an offline copy of the age key exists",
+]
+target_files = [".gitignore", ".sops.yaml"]
+convention_tags = ["secrets"]
+spec_ref = "docs/SECURITY.md"
+verification_command = "git check-ignore secrets/nizam-os.env"
+working_dir = "."
+depends_on = [{ id = "TICK-101", reason = "repo skeleton exists" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-103"
+phase = 1
+title = "scripts/secrets.sh + pre-commit hook"
+status = "todo"
+description = "Subcommands:\n  encrypt <name>: sops, secrets/<name>.env → .env.enc, and regenerate .env.example (keys only).\n  decrypt <name>\n  install: decrypt every .env.enc into ~/.config/nizam (dir 700, files 600; NIZAM_CONFIG_DIR overrides for tests).\n  check: fails if any .env is newer than its .enc, or if any .enc is zero bytes.\nEvery failure exits non-zero with a clear message. .pre-commit-config.yaml runs ruff, gitleaks, and `scripts/secrets.sh check`. Tests run the real script in a tmp dir with a throwaway age key from age-keygen (skipped if age/sops are absent, but they are installed by TICK-105)."
+acceptance_criteria = [
+  "tests/scripts/test_secrets_sh.py::test_encrypt_then_decrypt_round_trips_exactly",
+  "::test_encrypt_writes_example_with_keys_and_no_values",
+  "::test_install_creates_dir_700_and_files_600",
+  "::test_check_fails_when_plaintext_newer_than_enc",
+  "::test_check_fails_on_zero_byte_enc — regression for export/BUGS-AND-GOTCHAS.md #10",
+  "::test_check_passes_when_in_sync",
+  "::test_encrypt_fails_loudly_without_age_key — non-zero exit, and no .enc file is written",
+]
+target_files = ["scripts/secrets.sh", ".pre-commit-config.yaml", "tests/scripts/test_secrets_sh.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "secrets", "pre-commit"]
+spec_ref = "docs/SECURITY.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-102", reason = ".sops.yaml and the age key must exist" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-104"
+phase = 1
+title = "secrets/nizam-os.env — first secrets"
+status = "todo"
+description = "Create secrets/nizam-os.env with REDIS_PASSWORD (openssl rand -hex 24), and placeholders for LITELLM_MASTER_KEY and OPENROUTER_API_KEY (filled in during TICK-303). Then `secrets.sh encrypt nizam-os` and `secrets.sh install`. Never print values."
+acceptance_criteria = [
+  "`bash scripts/secrets.sh check` exits 0",
+  "secrets/nizam-os.env.enc and .env.example are staged-ready; the plaintext shows in `git status --ignored` only",
+]
+target_files = ["secrets/nizam-os.env.enc", "secrets/nizam-os.env.example"]
+convention_tags = ["secrets"]
+verification_command = "bash scripts/secrets.sh check"
+working_dir = "."
+depends_on = [{ id = "TICK-103", reason = "needs secrets.sh" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-105"
+phase = 1
+title = "scripts/bootstrap.sh — app-level host deps"
+status = "todo"
+description = "Idempotent. Installs postgresql-16, postgresql-16-pgvector (NOT ParadeDB), redis-server, age, sops, dbmate, and uv for vazir. Sets the Redis requirepass from ~/.config/nizam/nizam-os.env, and binds Postgres and Redis to 127.0.0.1. `--check` mode changes nothing and exits non-zero naming the first unmet requirement. Host hardening is nizam-dotfiles's job — do not touch it."
+acceptance_criteria = [
+  "Running `sudo bash scripts/bootstrap.sh` twice → the second run changes nothing",
+  "`bash scripts/bootstrap.sh --check` exits 0",
+  "`ss -tlnp` shows 5432 and 6379 on 127.0.0.1 only",
+]
+target_files = ["scripts/bootstrap.sh"]
+convention_tags = ["security"]
+verification_command = "bash scripts/bootstrap.sh --check"
+working_dir = "."
+depends_on = [{ id = "TICK-104", reason = "reads REDIS_PASSWORD from the installed env" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-106"
+phase = 1
+title = "~/nizam-vault — empty repo"
+status = "todo"
+description = "git init ~/nizam-vault with a README. Danish adds the private remote."
+acceptance_criteria = ["`git -C /home/vazir/nizam-vault status` succeeds", "The remote is configured (Danish)"]
+target_files = []
+convention_tags = ["git"]
+verification_command = "git -C /home/vazir/nizam-vault status"
+working_dir = "."
+depends_on = []
+tests_passing = false
+
+# ============================ PHASE 2 — database ============================
+
+[[tickets]]
+id = "TICK-201"
+phase = 2
+title = "migrations/001_audit.sql + pg test fixture"
+status = "todo"
+description = "Creates:\n  the audit schema and audit.log, with the row shape from spec 004;\n  a non-unique index on approval_id;\n  roles svc_knowledge and svc_finance — idempotent via DO $$ IF NOT EXISTS, because roles are cluster-global and each test DB re-runs this migration;\n  grants: INSERT and SELECT on audit.log only; no UPDATE, no DELETE, for anyone.\ntests/conftest.py gains a session-scoped `pg` fixture. It creates a throwaway database nizam_test_<random>, runs `dbmate up` against it with DBMATE_NO_DUMP_SCHEMA=true, yields an admin DSN plus per-role DSNs, and drops the database at teardown."
+acceptance_criteria = [
+  "[slow] tests/migrations/test_001_audit.py::test_migration_applies_to_empty_db",
+  "[slow] ::test_migration_is_rerunnable_across_databases — roles are pre-existing from another test DB, and there is no error",
+  "[slow] ::test_svc_knowledge_can_insert_and_select_audit",
+  "[slow] ::test_update_on_audit_denied_for_every_role — E-12",
+  "[slow] ::test_delete_on_audit_denied_for_every_role — E-13",
+  "[slow] ::test_approval_id_index_exists_and_is_not_unique",
+]
+target_files = ["migrations/001_audit.sql", "tests/conftest.py", "tests/migrations/test_001_audit.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "database", "postgresql", "testing"]
+spec_ref = "docs/specs/004-agent-runtime.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-105", reason = "Postgres and dbmate installed" },
+  { id = "TICK-101", reason = "pytest skeleton and markers" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-202"
+phase = 2
+title = "scripts/db.sh + apply 001 to the real database"
+status = "todo"
+description = "A dbmate wrapper: migrate, status, new <name>. It sets DBMATE_MIGRATIONS_DIR=migrations and DBMATE_NO_DUMP_SCHEMA=true, and connects over the unix socket (peer auth). Then generate the role passwords into secrets/nizam-mcp.env (KNOWLEDGE_DSN, FINANCE_DSN), run `secrets.sh encrypt nizam-mcp` and `install`, and apply them with ALTER ROLE."
+acceptance_criteria = [
+  "`bash scripts/db.sh status` shows 001 applied",
+  "psql as svc_knowledge with the installed DSN connects; `UPDATE audit.log` fails",
+  "`bash scripts/secrets.sh check` exits 0",
+]
+target_files = ["scripts/db.sh", "secrets/nizam-mcp.env.enc", "secrets/nizam-mcp.env.example"]
+convention_tags = ["database", "secrets"]
+verification_command = "bash scripts/db.sh status"
+working_dir = "."
+depends_on = [{ id = "TICK-201", reason = "migration 001 must exist" }]
+tests_passing = false
+
+# ============================ PHASE 3 — deploy + LiteLLM ============================
+
+[[tickets]]
+id = "TICK-301"
+phase = 3
+title = "scripts/deploy.sh — release dir, flip, manifest, rollback"
+status = "todo"
+description = "Per docs/ARCHITECTURE.md 'Deploy model'.\nSteps: git archive of a COMMITTED ref (refuses a dirty ref) → ~/.local/share/nizam/releases/<sha> → uv sync --frozen --no-dev → atomic flip of `current` (ln -sfn to current.tmp, then mv -Tf) → apply deploy/manifest.txt → daemon-reload → restart only units whose file content changed.\nManifest kinds: unit-system, link, copy-root (visudo -cf before installing any sudoers file).\nState: ~/.local/state/nizam/deploy-links.txt; links no longer in the manifest are removed. Keeps the last 5 releases.\nFlags: --dry-run, --rollback, --sync-secrets (runs secrets.sh install).\nTesting: NIZAM_HOME_ROOT and NIZAM_DEPLOY_NO_SUDO=1 redirect every path and skip sudo/systemctl, so tests run in tmp."
+acceptance_criteria = [
+  "tests/scripts/test_deploy_sh.py::test_refuses_uncommitted_ref",
+  "::test_builds_release_named_by_sha_and_flips_current",
+  "::test_flip_is_atomic_current_never_missing — current is a valid symlink at every observed moment during the flip",
+  "::test_manifest_link_created_and_recorded",
+  "::test_stale_link_removed_when_dropped_from_manifest",
+  "::test_rollback_points_current_to_previous_release",
+  "::test_keeps_only_last_five_releases",
+  "::test_dry_run_changes_nothing — tmp tree byte-identical before and after",
+  "::test_changed_unit_detection_lists_only_modified_units",
+  "::test_rejects_unknown_manifest_kind",
+]
+target_files = ["scripts/deploy.sh", "tests/scripts/test_deploy_sh.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "git"]
+spec_ref = "docs/ARCHITECTURE.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-103", reason = "--sync-secrets calls secrets.sh install" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-302"
+phase = 3
+title = "LiteLLM config + unit, and a systemd unit linter test"
+status = "todo"
+description = "deploy/litellm.yaml:\n  OpenRouter DeepSeek chat model and a DeepSeek-compatible embedding model (check the OpenRouter catalogue);\n  Redis cache;\n  Postgres `litellm` schema for spend;\n  every key given as os.environ/..., never literal.\ndeploy/systemd/system/litellm-proxy.service: 127.0.0.1:4000, EnvironmentFile=/home/vazir/.config/nizam/nizam-os.env.\nThe manifest line for it.\ntests/deploy/test_units.py lints every file under deploy/systemd:\n  no inline # after a directive (export/BUGS-AND-GOTCHAS.md #5);\n  the unit name is litellm-proxy or nizam-*;\n  ExecStart paths are absolute and under /home/vazir/.local/share/nizam/current or a system binary;\n  every EnvironmentFile is under /home/vazir/.config/nizam/;\n  no secret-looking literal anywhere."
+acceptance_criteria = [
+  "tests/deploy/test_units.py::test_no_inline_comments_on_directive_lines — a planted fixture violation is caught",
+  "::test_unit_names_are_litellm_proxy_or_nizam_prefixed",
+  "::test_execstart_paths_absolute_and_allowed",
+  "::test_environmentfile_under_config_nizam",
+  "::test_no_secret_literals_in_deploy_tree",
+  "tests/deploy/test_litellm_config.py::test_all_keys_from_environment",
+  "::test_models_are_deepseek",
+]
+target_files = ["deploy/litellm.yaml", "deploy/systemd/system/litellm-proxy.service", "deploy/manifest.txt", "tests/deploy/test_units.py", "tests/deploy/test_litellm_config.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "security", "secrets"]
+spec_ref = "docs/ARCHITECTURE.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-301", reason = "manifest format defined by deploy.sh" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-303"
+phase = 3
+title = "Go live: LiteLLM via deploy.sh, virtual keys"
+status = "todo"
+description = "Fill LITELLM_MASTER_KEY (generate it) and OPENROUTER_API_KEY (Danish pastes it), then encrypt and install. After Danish commits: deploy.sh --dry-run, then deploy.sh. Create virtual keys for nizam-mcp, admin and curator (assistant comes in Phase 7). Record them in the relevant secrets/*.env and encrypt."
+acceptance_criteria = [
+  "`curl -s 127.0.0.1:4000/health/liveliness` is healthy",
+  "A chat completion made with the curator virtual key succeeds",
+  "deploy.sh --rollback then deploy.sh both leave litellm-proxy active",
+  "`bash scripts/secrets.sh check` exits 0",
+]
+target_files = []
+convention_tags = ["secrets"]
+verification_command = "bash scripts/secrets.sh check"
+working_dir = "."
+depends_on = [{ id = "TICK-302", reason = "config and unit must exist" }]
+tests_passing = false
+
+# ============================ PHASE 4 — nizam core + knowledge (standalone) ============================
+
+[[tickets]]
+id = "TICK-401"
+phase = 4
+title = "nizam/config.py"
+status = "todo"
+description = "Reads every variable in the docs/ARCHITECTURE.md config table, once, at import. Required ones missing → raise naming the variable. Typed parsing (ints, the MCP_TOKENS map). No REDIS_URL. Defaults as documented."
+acceptance_criteria = [
+  "tests/test_config.py::test_loads_with_all_required_vars",
+  "::test_missing_required_var_raises_naming_it — parametrised over every required var",
+  "::test_defaults_applied — LITELLM_BASE_URL, MCP_HOST=127.0.0.1, MCP_PORT=8100, fetch limits 10MB/15/5",
+  "::test_mcp_tokens_parsed_to_agent_map_and_rejects_malformed",
+  "::test_no_redis_setting_exists",
+]
+target_files = ["nizam/config.py", "tests/test_config.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "secrets"]
+spec_ref = "docs/ARCHITECTURE.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-101", reason = "skeleton" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-402"
+phase = 4
+title = "core/errors.py + core/log.py"
+status = "todo"
+description = "AppError and typed subclasses (NotFoundError, ValidationError, UpstreamError, ConflictError, AuthError), each with a docstring and a stable `code`. Never an IndexError subclass. get_logger(): JSON to stderr, UTC timestamps, a redaction deny-list (key, token, password, secret, dsn)."
+acceptance_criteria = [
+  "tests/core/test_errors.py::test_each_error_has_stable_code",
+  "::test_errors_chain_cause_with_raise_from",
+  "tests/core/test_log.py::test_emits_valid_json_with_utc_timestamp",
+  "::test_redacts_deny_listed_keys — parametrised over key/token/password/secret/dsn",
+  "[property] ::test_never_emits_a_redacted_value — for any string value under a deny-listed key, that value never appears in the output",
+]
+target_files = ["nizam/core/errors.py", "nizam/core/log.py", "tests/core/test_errors.py", "tests/core/test_log.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "error-handling", "observability"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-401", reason = "package config" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-403"
+phase = 4
+title = "core/db.py + core/sql.py"
+status = "todo"
+description = "Async psycopg_pool, one pool per DSN, dict rows, statement_timeout. transaction() rolls back on ANY exception, so no connection is ever returned to the pool mid-aborted-transaction (export/BUGS-AND-GOTCHAS.md #1). load_query(domain, name) reads nizam/<domain>/queries/<name>.sql once and caches it."
+acceptance_criteria = [
+  "tests/core/test_sql.py::test_load_query_returns_file_text",
+  "::test_load_query_missing_raises_not_found",
+  "::test_load_query_caches — the file is read once",
+  "::test_load_query_rejects_path_traversal_name",
+  "[slow] tests/core/test_db.py::test_connection_usable_after_failed_statement_in_transaction — the exact regression for BUGS #1",
+  "[slow] ::test_transaction_commits_on_success",
+  "[slow] ::test_statement_timeout_enforced",
+]
+target_files = ["nizam/core/db.py", "nizam/core/sql.py", "tests/core/test_sql.py", "tests/core/test_db.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "python-async", "db-connection", "postgresql"]
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-402", reason = "typed errors" },
+  { id = "TICK-201", reason = "pg fixture" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-404"
+phase = 4
+title = "core/llm.py — embeddings client"
+status = "todo"
+description = "httpx.AsyncClient against LiteLLM /embeddings with LITELLM_API_KEY (nizam-mcp's own virtual key) and a timeout. Embeddings only — no chat in cycle 1. Transport error, non-2xx, malformed body, or a wrong vector length → UpstreamError."
+acceptance_criteria = [
+  "tests/core/test_llm.py::test_success_returns_vector_of_embed_dims (respx mock)",
+  "::test_connection_error_raises_upstream",
+  "::test_http_500_raises_upstream",
+  "::test_malformed_json_raises_upstream",
+  "::test_wrong_vector_length_raises_upstream",
+  "::test_sends_bearer_virtual_key_never_master",
+]
+target_files = ["nizam/core/llm.py", "tests/core/test_llm.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "python-async", "error-handling"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-402", reason = "UpstreamError" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-405"
+phase = 4
+title = "core/audit.py"
+status = "todo"
+description = "write_audit(conn, ...) writes on the caller's connection, so the audit row commits or rolls back together with the domain write (A-4). has_approval_been_applied(conn, approval_id) takes pg_advisory_xact_lock(hashtext(approval_id)), then checks for any existing row."
+acceptance_criteria = [
+  "[slow] tests/core/test_audit.py::test_audit_row_rolls_back_with_domain_write",
+  "[slow] ::test_domain_write_rolls_back_when_audit_insert_fails",
+  "[slow] ::test_has_approval_been_applied_false_then_true",
+  "[slow] ::test_advisory_lock_serialises_concurrent_checks",
+  "[slow] ::test_actor_and_origin_recorded",
+]
+target_files = ["nizam/core/audit.py", "tests/core/test_audit.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "database", "postgresql"]
+spec_ref = "docs/specs/004-agent-runtime.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-403", reason = "transaction helper" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-406"
+phase = 4
+title = "core/approval.py — signed draft tokens"
+status = "todo"
+description = "Spec 004 Layer 2.\n  issue(tool, agent, payload) → token: approval_id (random 128-bit), expires_at = now + 24h, and an HMAC-SHA256 under NIZAM_APPROVAL_KEY over tool, agent, canonical JSON, approval_id and expires_at.\n  verify(...) → approval_id, or DRAFT_MISMATCH / DRAFT_EXPIRED.\n  The clock is injectable for tests.\n  Stores nothing."
+acceptance_criteria = [
+  "tests/core/test_approval.py::test_issue_then_verify_returns_approval_id",
+  "::test_payload_change_rejected_mismatch — E-25",
+  "::test_other_agent_rejected — E-26",
+  "::test_other_tool_rejected — E-26",
+  "::test_expired_rejected — E-06, E-27, fake clock",
+  "::test_tampered_token_bytes_rejected",
+  "::test_canonicalisation_key_order_insensitive",
+  "[property] ::test_any_payload_mutation_is_rejected — hypothesis generates JSON payloads plus a single mutation; verify always fails",
+  "[property] ::test_round_trip_for_arbitrary_payloads",
+  "::test_issue_touches_no_io — no DB or file access (monkeypatched sentinels)",
+  "[slow] ::test_concurrent_approved_execution_one_write_one_already_applied — E-28, with core.audit",
+]
+target_files = ["nizam/core/approval.py", "tests/core/test_approval.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "security", "secrets"]
+spec_ref = "docs/specs/004-agent-runtime.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-405", reason = "replay check via audit" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-407"
+phase = 4
+title = "core/auth.py — tokens and scopes"
+status = "todo"
+description = "resolve(token) → agent, using hmac.compare_digest. SCOPES: curator={knowledge}, assistant={finance, calc}, admin=empty. authorize(agent, domain) raises AuthError, which maps to 401 for an unknown token and 403 for out of scope."
+acceptance_criteria = [
+  "tests/core/test_auth.py::test_known_token_resolves_agent",
+  "::test_unknown_and_empty_token_rejected",
+  "::test_scope_matrix — parametrised over agent × domain; exactly the allowed pairs pass",
+  "::test_admin_has_no_domains",
+  "::test_uses_constant_time_compare",
+]
+target_files = ["nizam/core/auth.py", "tests/core/test_auth.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "access-control", "auth"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-401", reason = "MCP_TOKENS config" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-408"
+phase = 4
+title = "migrations/002_knowledge.sql"
+status = "todo"
+description = "Per spec 001's Schema section.\nvault_index:\n  areas TEXT[] with a CHECK of 1-3 entries, all members of the vocabulary; GIN index;\n  a tsvector column with a GIN index;\n  embedding_status with a CHECK of pending|done|failed;\n  NO domain column.\nvault_embeddings: vector(EMBED_DIMS), plus model and dims stored per row.\nGrants: svc_knowledge gets DML on the knowledge schema only."
+acceptance_criteria = [
+  "[slow] tests/migrations/test_002_knowledge.py::test_applies_after_001",
+  "[slow] ::test_areas_check_rejects_empty_and_four_and_unknown",
+  "[slow] ::test_embedding_status_check",
+  "[slow] ::test_no_domain_column",
+  "[slow] ::test_svc_knowledge_dml_on_knowledge_only — E-11: denied on finance_personal",
+  "[slow] ::test_gin_indexes_exist",
+]
+target_files = ["migrations/002_knowledge.sql", "tests/migrations/test_002_knowledge.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "database", "postgresql"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-201", reason = "roles and pg fixture" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-409"
+phase = 4
+title = "knowledge/vault.py"
+status = "todo"
+description = "Markdown plus YAML frontmatter I/O. Path convention: <VAULT_ROOT>/<primary-area-slug>--<title-slug>.md. Containment check on every path (C-15, T-16); PATH_REJECTED never reveals the resolved path."
+acceptance_criteria = [
+  "tests/knowledge/test_vault.py::test_write_read_round_trip_all_fields",
+  "::test_path_convention_from_title_and_primary_area",
+  "::test_rejects_dotdot_absolute_and_symlink_escape — parametrised (A-03)",
+  "::test_path_rejected_message_does_not_disclose_path",
+  "::test_malformed_frontmatter_raises_typed_error",
+  "[property] ::test_slug_path_always_inside_vault — for any unicode title, the resolved path is inside VAULT_ROOT",
+  "[property] ::test_round_trip_arbitrary_metadata",
+]
+target_files = ["nizam/knowledge/vault.py", "tests/knowledge/test_vault.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "untrusted-input"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-402", reason = "typed errors" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-410"
+phase = 4
+title = "knowledge/areas.py"
+status = "todo"
+description = "The closed ten-value vocabulary and validate_areas(): 1-3 entries, all in the vocabulary, never coerced to a nearest match."
+acceptance_criteria = [
+  "tests/knowledge/test_areas.py::test_valid_lists_pass — parametrised: 1, 2, 3 entries",
+  "::test_empty_rejected",
+  "::test_four_rejected",
+  "::test_unknown_rejected_listing_valid_values",
+  "::test_near_miss_not_coerced — 'physical science' is rejected (A-08)",
+  "[property] ::test_any_subset_of_vocab_size_1_to_3_passes",
+]
+target_files = ["nizam/knowledge/areas.py", "tests/knowledge/test_areas.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-402", reason = "typed errors" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-411"
+phase = 4
+title = "knowledge/embed.py"
+status = "todo"
+description = "Wraps core.llm. Returns Embedded(vector, model, dims) or Degraded(reason) — never raises for upstream failure (ADR-006)."
+acceptance_criteria = [
+  "tests/knowledge/test_embed.py::test_success_returns_embedded_with_model_and_dims",
+  "::test_upstream_error_returns_degraded_not_raise",
+  "::test_degraded_reason_is_logged_once",
+]
+target_files = ["nizam/knowledge/embed.py", "tests/knowledge/test_embed.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "error-handling"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-404", reason = "core.llm" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-412"
+phase = 4
+title = "knowledge/repo.py + queries"
+status = "todo"
+description = "Index upsert, embedding write and status update on a caller transaction. search: tsvector lexical plus pgvector cosine, fused by RRF (k=60), then area/status filters, limit 1-50. No ParadeDB. Lexical-only with degraded=true when there is no query vector."
+acceptance_criteria = [
+  "[slow] tests/knowledge/test_repo.py::test_upsert_then_get",
+  "[slow] ::test_forced_lexical_failure_then_same_connection_query_succeeds — BUGS #1",
+  "[slow] ::test_rrf_ranks_dual_match_above_single",
+  "[slow] ::test_degraded_lexical_only_without_vector — A-09",
+  "[slow] ::test_area_filter_any_match",
+  "[slow] ::test_status_filter",
+  "[slow] ::test_limit_bounds_enforced",
+  "tests/knowledge/test_rrf.py::test_rrf_known_values — pure function, hand-computed expected values",
+  "[property] tests/knowledge/test_rrf.py::test_rrf_monotonic_in_rank",
+  "[slow] ::test_semantic_only_match_returned — A-10: the query shares no words with the note but has a near vector",
+]
+target_files = ["nizam/knowledge/repo.py", "nizam/knowledge/queries/search_lexical.sql", "nizam/knowledge/queries/search_vector.sql", "nizam/knowledge/queries/upsert_note.sql", "tests/knowledge/test_repo.py", "tests/knowledge/test_rrf.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "database", "postgresql"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-403", reason = "pool and load_query" },
+  { id = "TICK-408", reason = "tables" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-413"
+phase = 4
+title = "knowledge/sources/web.py"
+status = "todo"
+description = "SSRF-safe fetch (C-16), re-validated on every redirect. Streams with a byte cap and aborts mid-stream (C-17). Content-type check. Extraction with one fallback extractor. Returns ExtractedSource with final_url."
+acceptance_criteria = [
+  "tests/knowledge/test_sources_web.py::test_rejects_non_http_schemes — file, ftp, gopher, data",
+  "::test_rejects_private_targets — parametrised: 127.0.0.1, ::1, 10/8, 172.16/12, 192.168/16, 169.254/16, fc00::/7, localhost (A-04)",
+  "::test_rejects_redirect_to_private — A-05",
+  "::test_too_many_redirects",
+  "::test_aborts_stream_at_cap_without_buffering — A-07",
+  "::test_timeout_maps_to_fetch_timeout",
+  "::test_non_html_rejected",
+  "::test_extraction_empty_under_200_chars",
+  "::test_fallback_extractor_used_when_primary_fails",
+  "::test_final_url_reflects_redirects",
+]
+target_files = ["nizam/knowledge/sources/web.py", "tests/knowledge/test_sources_web.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "untrusted-input", "security"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-401", reason = "fetch limits" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-414"
+phase = 4
+title = "knowledge/sources/youtube.py"
+status = "todo"
+description = "Id validation ^[A-Za-z0-9_-]{11}$ before anything else. Argv only, never a shell (C-18). Ordered fallback paths; `method` records which one succeeded."
+acceptance_criteria = [
+  "tests/knowledge/test_sources_youtube.py::test_extracts_id_from_url_forms — watch, youtu.be, shorts, bare id",
+  "::test_rejects_metacharacter_ids_before_any_call — A-06, parametrised",
+  "::test_fallback_path_used_and_recorded_in_method",
+  "::test_all_paths_fail_transcript_unavailable_names_paths",
+  "::test_subprocess_invoked_with_argv_list_not_shell",
+  "[property] ::test_only_valid_ids_reach_subprocess",
+]
+target_files = ["nizam/knowledge/sources/youtube.py", "tests/knowledge/test_sources_youtube.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "untrusted-input"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-402", reason = "typed errors" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-415"
+phase = 4
+title = "knowledge/service.py"
+status = "todo"
+description = "No classification here — the agent classifies. fetch_* returns ExtractedSource. draft_add and draft_update validate and render, touching nothing; draft_update binds the current file hash. apply_*: write the file first; then, in one transaction, the index row, the embedding (or pending), and audit with approval_id and the replay check. If the transaction fails → delete the new file, or restore the prior bytes → INDEX_WRITE_FAILED (K-3, A-4)."
+acceptance_criteria = [
+  "tests/knowledge/test_service.py::test_draft_add_touches_nothing — E-29: vault dir listing and DB row counts unchanged",
+  "::test_draft_add_rejects_evergreen_on_create",
+  "::test_draft_add_note_exists — A-15",
+  "[slow] ::test_apply_add_writes_file_index_audit — A-01, A-16, E-14",
+  "[slow] ::test_apply_add_audit_failure_removes_file — A-14, E-15",
+  "[slow] ::test_apply_update_failure_restores_prior_bytes",
+  "[slow] ::test_apply_update_rejects_if_file_changed_since_draft — DRAFT_MISMATCH",
+  "[slow] ::test_apply_add_with_embed_down_sets_pending",
+  "[slow] ::test_apply_twice_same_token_already_applied — E-07",
+  "::test_service_never_calls_chat",
+  "::test_status_raw_to_evergreen_refused_raw_processed_evergreen_ok — A-11",
+  "[slow] ::test_update_with_unchanged_content_does_not_reembed — A-12 (the embed mock is asserted not called)",
+  "::test_rejected_draft_leaves_no_file_row_or_audit — A-02, E-03",
+]
+target_files = ["nizam/knowledge/service.py", "tests/knowledge/test_service.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "error-handling"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-409", reason = "vault" },
+  { id = "TICK-410", reason = "areas" },
+  { id = "TICK-411", reason = "embed" },
+  { id = "TICK-412", reason = "repo" },
+  { id = "TICK-413", reason = "web fetch" },
+  { id = "TICK-414", reason = "youtube fetch" },
+  { id = "TICK-406", reason = "approval tokens and replay" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-416"
+phase = 4
+title = "knowledge/tools.py"
+status = "todo"
+description = "The seven tools, exactly per spec 001. Read-class: search_vault, get_note, list_notes, ingest_url, ingest_youtube — none has an `approved` param. Write-class: add_note, update_note, two-pass. Exports WRITE_TOOLS. Every spec error code is mapped."
+acceptance_criteria = [
+  "tests/knowledge/test_tools.py::test_all_seven_tools_listed (fastmcp in-memory Client)",
+  "::test_read_tools_have_no_approved_param",
+  "::test_write_tools_set_equals_add_and_update",
+  "::test_add_note_draft_returns_token_and_writes_nothing",
+  "::test_add_note_approved_with_tampered_payload_draft_mismatch — E-05",
+  "::test_error_code_mapping — parametrised over every error in spec 001's tables",
+  "[slow] ::test_add_note_full_two_pass_writes_once",
+  "::test_read_tool_executes_without_token — E-01",
+  "::test_write_with_approved_true_but_no_prior_draft_token_refused — E-02, E-04",
+]
+target_files = ["nizam/knowledge/tools.py", "tests/knowledge/test_tools.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "access-control"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-415", reason = "service" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-417"
+phase = 4
+title = "core/http.py + python -m nizam serve|jobs"
+status = "todo"
+description = "Starlette app; mounts the knowledge FastMCP streamable-HTTP app at /knowledge (check the fastmcp mount API via context7). Bearer middleware → 401 or 403; the agent goes into a contextvar used as the audit actor. /health: unauthenticated, 2s timeout, dedicated connection, 503 when the DB is down. __main__: `serve` binds 127.0.0.1:8100; `jobs <name>` dispatches. No stdio."
+acceptance_criteria = [
+  "tests/core/test_http.py::test_no_token_401",
+  "::test_unknown_token_401",
+  "::test_out_of_scope_403 — assistant token on /knowledge",
+  "::test_in_scope_200 — curator token on /knowledge",
+  "::test_actor_contextvar_set_from_token",
+  "::test_health_200_when_db_ok",
+  "::test_health_503_when_db_down",
+  "::test_serve_binds_loopback_default",
+  "::test_jobs_dispatch_unknown_job_exits_nonzero",
+  "::test_agent_only_sees_tools_of_its_domains — E-10: the curator's MCP tools/list over its endpoint contains only knowledge tools",
+]
+target_files = ["nizam/core/http.py", "nizam/__main__.py", "tests/core/test_http.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "access-control", "health"]
+spec_ref = "docs/ARCHITECTURE.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-416", reason = "knowledge tools" },
+  { id = "TICK-407", reason = "auth" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-418"
+phase = 4
+title = "jobs/retry_embeddings.py"
+status = "todo"
+description = "Bounded batch of pending rows → embed → done. Rows stay pending while the embed path is degraded; they become failed after N attempts. Idempotent; a quick no-op when there is nothing to do."
+acceptance_criteria = [
+  "[slow] tests/jobs/test_retry_embeddings.py::test_pending_becomes_done_when_llm_up",
+  "[slow] ::test_pending_stays_pending_when_llm_down",
+  "[slow] ::test_marks_failed_after_max_attempts",
+  "[slow] ::test_batch_size_respected",
+  "::test_no_pending_exits_zero_fast",
+]
+target_files = ["nizam/jobs/retry_embeddings.py", "tests/jobs/test_retry_embeddings.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-411", reason = "embed" },
+  { id = "TICK-412", reason = "repo" },
+  { id = "TICK-417", reason = "jobs dispatch" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-420"
+phase = 4
+title = "jobs/reindex.py — rebuild the index from vault files"
+status = "todo"
+description = "`python -m nizam jobs reindex`: walks VAULT_ROOT, parses every note, and upserts index rows in bounded batches. Rows whose file no longer exists are removed. Embeddings are re-queued as pending when missing or when the model changed — never re-embedded inline. It also adopts any orphan file (a file with no index row) left by the double-failure case in spec 001 step 5, and logs each one it adopts. Idempotent. This is the recovery path for NFR.08 / K-2."
+acceptance_criteria = [
+  "[slow] tests/jobs/test_reindex.py::test_rebuild_from_files_alone_matches_original_index — A-13: the index is dropped, then rebuilt, and compared row by row",
+  "[slow] ::test_removes_rows_for_deleted_files",
+  "[slow] ::test_adopts_orphan_file_and_logs_it",
+  "[slow] ::test_missing_embeddings_marked_pending_not_embedded_inline",
+  "[slow] ::test_idempotent_second_run_no_changes",
+  "::test_malformed_note_skipped_and_reported_not_fatal",
+]
+target_files = ["nizam/jobs/reindex.py", "tests/jobs/test_reindex.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/001-knowledge.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-409", reason = "vault parsing" },
+  { id = "TICK-412", reason = "index upserts" },
+  { id = "TICK-417", reason = "jobs dispatch" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-419"
+phase = 4
+title = "Phase 4 end-to-end check (real infrastructure)"
+status = "todo"
+description = "Manual. Run `python -m nizam serve` against real Postgres and LiteLLM, with a raw MCP client and the curator token:\n  ingest_url → draft add_note → approve → confirm the file, index row and audit row with approval_id;\n  replay the approved call → ALREADY_APPLIED;\n  stop litellm → add_note gives pending → start litellm → run the retry job → done.\nThe coverage gate must pass."
+acceptance_criteria = ["All the above observed against live services", "`bash scripts/check.sh --all` exits 0, including the coverage gate"]
+target_files = []
+convention_tags = ["coding-principles"]
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-417", reason = "daemon" },
+  { id = "TICK-418", reason = "retry job" },
+  { id = "TICK-420", reason = "reindex job" },
+]
+tests_passing = false
+
+# ============================ PHASE 5 — Hermes, plugin, go live ============================
+
+[[tickets]]
+id = "TICK-501"
+phase = 5
+title = "agents/admin + agents/curator configs"
+status = "todo"
+description = "Write SOUL.md, AGENTS.md and config.yaml for admin (Nazim) and curator (Noor) from scratch. Both configs set approvals {mode: manual, gateway_timeout: 1800, cron_mode: deny} and a DeepSeek model through LiteLLM with the profile's virtual key via ${}. Curator: mcp_servers.knowledge url + a Bearer ${NIZAM_MCP_TOKEN} header. Admin: command_allowlist of exactly the entries in docs/SECURITY.md, and no mcp_servers. tests/agents/test_agent_configs.py validates every agents/*/config.yaml."
+acceptance_criteria = [
+  "tests/agents/test_agent_configs.py::test_approvals_block_exact — parametrised over profiles",
+  "::test_cron_mode_deny_everywhere",
+  "::test_models_are_deepseek",
+  "::test_no_literal_secrets — every key/token field is a ${VAR} reference",
+  "::test_curator_mcp_url_loopback_and_bearer_header_interpolated",
+  "::test_admin_has_no_mcp_servers",
+  "::test_admin_command_allowlist_exact — only status/restart for litellm-proxy and nizam-mcp (sudo) and systemctl --user for the two gateways; never postgres/redis/admin's own gateway",
+  "::test_nizam_approval_plugin_enabled_everywhere",
+  "::test_no_package_install_commands_in_any_allowlist — E-17 (pip, npm, apt, curl|sh absent)",
+]
+target_files = ["agents/admin/config.yaml", "agents/admin/SOUL.md", "agents/admin/AGENTS.md", "agents/curator/config.yaml", "agents/curator/SOUL.md", "agents/curator/AGENTS.md", "tests/agents/test_agent_configs.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "security", "secrets"]
+spec_ref = "docs/SECURITY.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-419", reason = "daemon verified standalone first" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-502"
+phase = 5
+title = "agents/plugins/nizam-approval — Hermes pre_tool_call hook"
+status = "todo"
+description = "Spec 004 Layer 1. For a tool in the write list, called with approved=true → return {action: approve, message: plain-language summary, rule_key: sha256(tool + canonical args)}. Anything else → no action. WRITE_TOOLS is imported (or generated) from nizam's domain tool modules. First confirm the installed Hermes hook API (tools/approval.py request_tool_approval)."
+acceptance_criteria = [
+  "tests/agents/test_approval_plugin.py::test_approved_write_triggers_approve",
+  "::test_draft_write_passes_through — approved=false",
+  "::test_read_tool_passes_through",
+  "::test_rule_key_differs_for_any_arg_change",
+  "::test_message_states_effect_not_raw_payload — E-24",
+  "::test_plugin_write_list_equals_nizam_write_tools — E-30",
+  "[property] ::test_rule_key_deterministic_and_collision_free_for_distinct_args",
+]
+target_files = ["agents/plugins/nizam-approval/__init__.py", "tests/agents/test_approval_plugin.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "security", "access-control"]
+spec_ref = "docs/specs/004-agent-runtime.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-416", reason = "WRITE_TOOLS source" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-503"
+phase = 5
+title = "deploy: nizam-mcp unit, retry timer, sudoers, manifest"
+status = "todo"
+description = "nizam-mcp.service: User=vazir, ExecStart=current/.venv/bin/python -m nizam serve, EnvironmentFile=~/.config/nizam/nizam-mcp.env, Restart=on-failure, MemoryMax=512M. nizam-retry-embeddings.service and .timer (every 10 minutes). deploy/sudoers/admin-nizam. Manifest lines: units, Hermes profile links (config/SOUL/AGENTS/.env/plugin) for admin and curator, sudoers as copy-root. The unit linter from TICK-302 covers the new units."
+acceptance_criteria = [
+  "tests/deploy/test_units.py passes over the new units (existing linter)",
+  "tests/deploy/test_sudoers.py::test_only_exact_status_and_restart_lines_for_litellm_and_nizam_mcp",
+  "::test_no_wildcards_no_shell_no_other_units",
+  "::test_visudo_accepts_file — skipped if visudo is absent",
+  "tests/deploy/test_manifest.py::test_every_referenced_source_exists",
+  "::test_hermes_links_for_admin_and_curator_complete",
+]
+target_files = ["deploy/systemd/system/nizam-mcp.service", "deploy/systemd/system/nizam-retry-embeddings.service", "deploy/systemd/system/nizam-retry-embeddings.timer", "deploy/sudoers/admin-nizam", "deploy/manifest.txt", "tests/deploy/test_sudoers.py", "tests/deploy/test_manifest.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "security"]
+spec_ref = "docs/SECURITY.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [
+  { id = "TICK-501", reason = "profile files to link" },
+  { id = "TICK-502", reason = "plugin to link" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-504"
+phase = 5
+title = "Go live over Discord (manual check)"
+status = "todo"
+description = "Danish creates the Discord server, channels and bots. Install Hermes; create the admin and curator profiles and gateways. After the commit: deploy.sh.\nChecks:\n  Noor: search; add a note via /approve; ingest a URL; deny a draft → nothing written.\n  Nazim: status; asked to restart postgres → refuses.\n  curl the daemon with a wrong token → 401; cross-scope → 403."
+acceptance_criteria = ["Every live check above observed", "`systemctl --failed` and `systemctl --user --failed` are empty",
+  "Live: a message to Noor from a non-owner Discord account produces no action (E-09); an /approve from a non-owner is ignored (E-08)",
+  "Live: asking Nazim to run an allowlisted command extended with extra arguments or chained (e.g. `systemctl restart litellm-proxy; rm -rf ~`) is refused (E-16)",
+  "Live: asking any agent to pip/npm install or add a tool at runtime is refused (E-17)",
+]
+target_files = []
+convention_tags = ["coding-principles"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-503", reason = "units and links" }]
+tests_passing = false
+
+# ============================ PHASE 6 — observability + backups ============================
+
+[[tickets]]
+id = "TICK-601"
+phase = 6
+title = "ops/metrics — textfile collectors"
+status = "todo"
+description = "Emits:\n  nizam_unit_up{unit} for litellm-proxy, nizam-mcp and the gateways;\n  nizam_llm_spend_usd{key} from LiteLLM spend logs;\n  nizam_tool_calls_total{agent} from audit.log;\n  nizam_embeddings_pending;\n  nizam_backup_last_success_timestamp.\nWrites are atomic (tmp then rename) into the node-exporter textfile dir. nizam-metrics.{service,timer}."
+acceptance_criteria = [
+  "tests/ops/test_metrics.py::test_output_is_valid_prometheus_exposition — prometheus_client parser",
+  "::test_atomic_write_via_rename",
+  "::test_unit_down_reports_zero",
+  "::test_missing_source_emits_nothing_for_that_metric_not_crash",
+  "[slow] ::test_tool_calls_counted_from_audit",
+]
+target_files = ["ops/metrics/collect.py", "deploy/systemd/system/nizam-metrics.service", "deploy/systemd/system/nizam-metrics.timer", "tests/ops/test_metrics.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "metrics"]
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-504", reason = "live units to observe" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-602"
+phase = 6
+title = "jobs/backup.py + nizam-backup timer"
+status = "todo"
+description = "Runs pg_dump -Fc --exclude-schema=litellm (argv), tars Hermes memories and skills, then commits and pushes the vault. Rotation keeps 14 daily and 8 weekly. Writes nizam_backup_last_success_timestamp. The rotation selection is a pure function over dates. nizam-backup.{service,timer} at 03:30."
+acceptance_criteria = [
+  "tests/jobs/test_backup.py::test_pg_dump_argv_excludes_litellm_schema",
+  "::test_rotation_keeps_14_daily_8_weekly_known_dates",
+  "[property] ::test_rotation_never_deletes_newest_and_bounds_count — any set of backup dates: the newest is kept and the count is <= 22",
+  "[property] ::test_rotation_idempotent",
+  "::test_vault_commit_skipped_when_clean",
+  "::test_failure_does_not_update_success_timestamp",
+  "[slow] ::test_restore_of_produced_dump_into_scratch_db",
+]
+target_files = ["nizam/jobs/backup.py", "deploy/systemd/system/nizam-backup.service", "deploy/systemd/system/nizam-backup.timer", "tests/jobs/test_backup.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-418", reason = "jobs dispatch" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-603"
+phase = 6
+title = "Promtail job + Grafana dashboards"
+status = "todo"
+description = "deploy/promtail-nizam.yaml ships journald for nizam-mcp and the gateways. deploy/grafana/*.json covers services, spend, tool calls, pending embeddings and backup age, using profile names admin|curator|assistant."
+acceptance_criteria = [
+  "tests/deploy/test_dashboards.py::test_json_valid",
+  "::test_profile_filters_use_role_names_not_character_names — regression for BUGS #9",
+  "::test_every_metric_referenced_is_emitted_by_ops_metrics",
+]
+target_files = ["deploy/promtail-nizam.yaml", "deploy/grafana/nizam.json", "tests/deploy/test_dashboards.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "observability"]
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-601", reason = "metric names" }]
+tests_passing = false
+
+# ============================ PHASE 7 — calc, finance, Ayah ============================
+
+[[tickets]]
+id = "TICK-701"
+phase = 7
+title = "calc: Money, SubUnitScale, add_money, convert_currency, rounding"
+status = "todo"
+description = "Pure; no I/O. Money(amount: int, currency). The SubUnitScale table (AED 100, USD 100, INR 100, plus test fixtures for scale 1000 and 1). Half-even rounding at one boundary. Refuse floats and mixed-currency sums. Expected values come from independent Decimal computations written in the test, never from the code under test."
+acceptance_criteria = [
+  "tests/calc/test_money.py::test_rejects_float_and_decimal_amounts — C-02",
+  "::test_add_mixed_currency_refused_naming_both — C-01",
+  "::test_half_even_known_cases — 0.5→0, 1.5→2, 2.5→2, -2.5→-2",
+  "::test_convert_known_values_hand_computed — C-03",
+  "::test_scale_1000_and_scale_1_round_trip — C-15, C-16, B-18",
+  "[property] ::test_add_commutative_associative_same_currency",
+  "[property] ::test_add_equals_integer_sum",
+  "[property] ::test_convert_matches_decimal_reference_half_even — any amount and rate",
+  "[property] ::test_convert_rounds_once_multi_step_equals_single_expression — C-04",
+  "[property] ::test_deterministic_byte_identical — C-13",
+]
+target_files = ["nizam/calc/money.py", "tests/calc/test_money.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/003-calc.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-402", reason = "typed errors" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-702"
+phase = 7
+title = "calc: amortise, compute_share, compute_ratio, compound"
+status = "todo"
+description = "Per spec 003. Zero denominators return 'undefined', never zero. amortise returns monthly and remainder such that monthly*months+remainder == full. compound rounds once."
+acceptance_criteria = [
+  "tests/calc/test_ops.py::test_share_zero_whole_undefined — C-05",
+  "::test_ratio_zero_denominator_undefined — C-06",
+  "::test_compound_zero_periods_returns_principal — C-11",
+  "::test_compound_known_value_hand_computed",
+  "[property] ::test_amortise_exact_reconstruction — C-07",
+  "[property] ::test_share_bp_in_0_10000_and_sums_to_10000_over_partition",
+  "[property] ::test_compound_rounds_once — C-12: equals the single Decimal expression",
+]
+target_files = ["nizam/calc/ops.py", "tests/calc/test_ops.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/003-calc.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-701", reason = "Money" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-703"
+phase = 7
+title = "calc: compute_zakat"
+status = "todo"
+description = "2.5% rate. Rounds UP (away from zero). No caller override. Below nisab → 0, with the comparison shown."
+acceptance_criteria = [
+  "tests/calc/test_zakat.py::test_below_nisab_zero_with_comparison — C-08, B-13",
+  "::test_rounds_up_fractional — C-09, B-14",
+  "::test_rounding_not_overridable — C-10",
+  "::test_known_values_hand_computed",
+  "[property] ::test_obligation_equals_ceil_total_div_40 — Decimal reference",
+  "[property] ::test_obligation_never_below_exact_2_5_percent",
+]
+target_files = ["nizam/calc/zakat.py", "tests/calc/test_zakat.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/003-calc.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-701", reason = "Money" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-704"
+phase = 7
+title = "calc/tools.py — read-class MCP tools"
+status = "todo"
+description = "Exposes the calc functions as MCP tools, all read-class, with no approval. Stateless: the module holds no DB role and opens no connection (C-14)."
+acceptance_criteria = [
+  "tests/calc/test_tools.py::test_all_tools_listed",
+  "::test_no_tool_is_write_class",
+  "::test_no_db_import_or_connection — C-14",
+  "::test_errors_mapped_per_spec",
+]
+target_files = ["nizam/calc/tools.py", "tests/calc/test_tools.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/003-calc.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [
+  { id = "TICK-702", reason = "ops" },
+  { id = "TICK-703", reason = "zakat" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-705"
+phase = 7
+title = "migrations/003_finance.sql"
+status = "todo"
+description = "Per spec 002's Schema section.\nTables: accounts, transactions (with recurring_id), transfers, categories (with kinds including reconciliation), budgets, amortisation, and zakat_state (single row).\nConstraints:\n  no balance column anywhere;\n  a partial unique index giving one active budget per category;\n  a CHECK that the fx_* columns are all-or-nothing;\n  amounts CHECK > 0.\nSeeds the system categories transfer_internal, reconciliation and fx_fee.\nGrants: svc_finance gets DML on finance_personal only."
+acceptance_criteria = [
+  "[slow] tests/migrations/test_003_finance.py::test_applies_after_002",
+  "[slow] ::test_no_balance_column_on_any_table — ADR-005",
+  "[slow] ::test_two_active_budgets_same_category_rejected — B-16",
+  "[slow] ::test_fx_columns_all_or_nothing",
+  "[slow] ::test_zakat_state_single_row_enforced",
+  "[slow] ::test_system_categories_seeded",
+  "[slow] ::test_svc_finance_cannot_touch_knowledge — E-11",
+  "[slow] ::test_amount_must_be_positive",
+]
+target_files = ["migrations/003_finance.sql", "tests/migrations/test_003_finance.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "database", "postgresql"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-408", reason = "migration order" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-706"
+phase = 7
+title = "finance/fx.py — FX and silver-price providers"
+status = "todo"
+description = "Pick providers (a free FX API; a silver price in AED/USD per gram) and record them in spec 002 Q-F3. Each returns Rate(value, scale, as_of, source) or raises UpstreamError. Staleness beyond RATE_MAX_AGE (24h) → stale error. Never falls back to a cached or default value for zakat (FR.01.5.2)."
+acceptance_criteria = [
+  "tests/finance/test_fx.py::test_rate_has_provenance_fields",
+  "::test_upstream_error_on_failure",
+  "::test_stale_rate_rejected",
+  "::test_no_default_or_cached_fallback_for_nisab — T-31",
+  "::test_rate_is_scaled_integer_not_float",
+]
+target_files = ["nizam/finance/fx.py", "tests/finance/test_fx.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "error-handling"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [{ id = "TICK-404", reason = "httpx and UpstreamError patterns" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-707"
+phase = 7
+title = "finance/repo.py + queries — ledger reads and writes"
+status = "todo"
+description = "All SQL lives in queries/*.sql. The derived balance is opening + credits - debits up to a date. Transfers write one transfers row plus a fee transaction. Writes run on the caller's transaction."
+acceptance_criteria = [
+  "[slow] tests/finance/test_repo.py::test_derived_balance_opening_plus_movements — F-9",
+  "[slow] ::test_balance_as_of_excludes_later_movements",
+  "[slow] ::test_transfer_writes_transfer_row_and_fee_txn",
+  "[slow] ::test_closed_account_insert_rejected — B-20",
+  "[slow] ::test_inactive_category_rejected_for_new_but_old_resolves — B-23",
+]
+target_files = ["nizam/finance/repo.py", "nizam/finance/queries/balance.sql", "nizam/finance/queries/insert_transaction.sql", "tests/finance/test_repo.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "database", "postgresql"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-705", reason = "tables" }]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-708"
+phase = 7
+title = "finance/reports.py — pure spending and position aggregation"
+status = "todo"
+description = "A pure function over already-fetched rows, so it can be tested without a DB.\nSpending: excludes transfers (F-2); fees count; converts at each transaction's own rate (F-10); the amortised view excludes recurring_id payments and adds the schedule shares; reconciliation goes to `unrecorded`; the invariant is by_category + unrecorded == total, else RECONCILIATION_FAILED.\nPosition: converts to AED with rate provenance, and withholds the total with a reason when a rate is missing (B-10)."
+acceptance_criteria = [
+  "tests/finance/test_reports.py::test_transfers_excluded_fees_included — B-05",
+  "::test_historical_rate_used — B-09",
+  "::test_amortised_view_spreads_and_excludes_payment — B-07, B-27, no double count",
+  "::test_reconciliation_only_in_unrecorded_line — B-26",
+  "::test_rate_missing_total_withheld_with_reason — B-10",
+  "::test_converted_figures_carry_rate_and_as_of — B-08",
+  "::test_comparison_delta_and_bp",
+  "[property] ::test_category_plus_unrecorded_equals_total_for_any_ledger — B-06, F-5",
+  "[property] ::test_transfers_never_change_spending_total",
+  "[property] ::test_share_bp_sum_within_partition_rules",
+  "::test_budget_exceeded_surfaced_mid_month — B-17",
+]
+target_files = ["nizam/finance/reports.py", "tests/finance/test_reports.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [
+  { id = "TICK-702", reason = "calc ops" },
+  { id = "TICK-706", reason = "Rate type" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-709"
+phase = 7
+title = "finance/zakat.py — hawl + orchestration"
+status = "todo"
+description = "Zakatable accounts are current, savings and cash only. Nisab = silver price × NISAB_SILVER_GRAMS (612.36g — confirm the value). The hawl uses lunar years via a Hijri calendar library (hijridate, Umm al-Qura; record the choice). Starting, continuing, completing and resetting the hawl on a dip below nisab is pure logic over a balance history plus zakat_state. Only zakat_state is written. If the price is unavailable → NISAB_UNAVAILABLE."
+acceptance_criteria = [
+  "tests/finance/test_zakat_hawl.py::test_not_started_below_nisab — B-15a",
+  "::test_crossing_starts_hawl",
+  "::test_obligation_zero_until_lunar_year_elapsed — independently computed Hijri dates",
+  "::test_due_exactly_one_lunar_year_after_start_not_365_days",
+  "::test_dip_below_nisab_resets_hawl",
+  "::test_only_current_savings_cash_counted — B-15b",
+  "::test_silver_basis_stated — B-15c",
+  "::test_price_unavailable_no_figure — B-11",
+  "::test_result_provenance_complete — B-12",
+  "[property] ::test_hawl_never_completes_if_any_balance_point_below_nisab",
+  "[slow] ::test_only_zakat_state_written — B-15",
+]
+target_files = ["nizam/finance/zakat.py", "tests/finance/test_zakat_hawl.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-703", reason = "compute_zakat" },
+  { id = "TICK-706", reason = "silver price" },
+  { id = "TICK-707", reason = "balance history" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-710"
+phase = 7
+title = "finance/service.py — drafts and applies for every write"
+status = "todo"
+description = "Drafts and applies for:\n  record_transaction (optional recurring_id)\n  record_transfer\n  manage_budget set\n  manage_account open/close (zakatable derived from type)\n  manage_category create/deactivate (RESERVED_KIND)\n  reconcile_account (zero difference → no draft)\n  manage_recurring add/end (calc.amortise)\nDrafts touch nothing. Each apply is one transaction: domain rows, audit rows with approval_id, and the replay check."
+acceptance_criteria = [
+  "tests/finance/test_service.py::test_every_draft_touches_nothing — parametrised over each write, E-29",
+  "::test_non_integer_amount_refused_not_rounded — B-02",
+  "::test_unknown_category_refused_with_list — B-03",
+  "::test_account_zakatable_derived_from_type — B-21",
+  "::test_reserved_kind_refused — B-22",
+  "::test_reconcile_zero_difference_no_draft — B-24",
+  "[slow] ::test_reconcile_makes_derived_equal_stated — B-25",
+  "[slow] ::test_budget_set_supersedes_active — B-16",
+  "[slow] ::test_cross_currency_transfer_records_both_and_fee — B-04",
+  "[slow] ::test_each_apply_writes_exactly_one_audit_row_per_domain_row — B-19",
+  "[slow] ::test_apply_replay_already_applied",
+  "[slow] ::test_record_transaction_defaults_date_to_today_and_fills_every_field — B-01",
+]
+target_files = ["nizam/finance/service.py", "tests/finance/test_service.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "error-handling"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-707", reason = "repo" },
+  { id = "TICK-708", reason = "reports for budgets and close drafts" },
+  { id = "TICK-406", reason = "approval" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-711"
+phase = 7
+title = "finance/tools.py"
+status = "todo"
+description = "The tools: record_transaction, record_transfer, report_spending, report_position, manage_budget, manage_account, manage_category, reconcile_account, manage_recurring, calculate_zakat, exactly per spec 002. Read actions run directly; write actions are two-pass. Exports WRITE_TOOLS."
+acceptance_criteria = [
+  "tests/finance/test_tools.py::test_all_tools_listed",
+  "::test_write_tools_set_matches_spec — B-28",
+  "::test_write_without_token_refused",
+  "::test_error_code_mapping — parametrised over spec 002's tables",
+  "[slow] ::test_record_transaction_full_two_pass",
+]
+target_files = ["nizam/finance/tools.py", "tests/finance/test_tools.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "access-control"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [
+  { id = "TICK-710", reason = "service" },
+  { id = "TICK-709", reason = "zakat" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-712"
+phase = 7
+title = "Mount /finance and /calc; the full scope matrix"
+status = "todo"
+description = "core/http.py mounts /finance/mcp and /calc/mcp, and the config gains FINANCE_DSN. The plugin write list includes the finance WRITE_TOOLS."
+acceptance_criteria = [
+  "tests/core/test_http.py::test_full_scope_matrix — every agent × every domain returns 401/403/200 exactly as SCOPES says",
+  "tests/agents/test_approval_plugin.py::test_plugin_write_list_equals_nizam_write_tools — now includes finance (E-30)",
+]
+target_files = ["nizam/core/http.py", "nizam/config.py", "tests/core/test_http.py", "tests/agents/test_approval_plugin.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "python", "access-control"]
+spec_ref = "docs/ARCHITECTURE.md"
+verification_command = "bash scripts/check.sh"
+working_dir = "."
+depends_on = [
+  { id = "TICK-711", reason = "finance tools" },
+  { id = "TICK-704", reason = "calc tools" },
+]
+tests_passing = false
+
+[[tickets]]
+id = "TICK-713"
+phase = 7
+title = "agents/assistant (Ayah) + live check"
+status = "todo"
+description = "hermes profile create assistant. Write SOUL, AGENTS and config: mcp_servers finance and calc only (no knowledge), the approvals block, and DeepSeek. Its own virtual key, bot and #finance. Add the manifest links. After the commit, deploy.\nLive checks: open an account; create categories; record a transaction via /approve; report position (matches a hand calculation, with rate provenance); with the FX API blocked, the total is withheld; calculate zakat (states basis and hawl)."
+acceptance_criteria = [
+  "tests/agents/test_agent_configs.py passes for assistant — including test_assistant_has_no_knowledge_server",
+  "Every live check above observed",
+  "`bash scripts/check.sh --all` exits 0 with the coverage gate (core, calc, finance >= 90%; overall >= 80%)",
+]
+target_files = ["agents/assistant/config.yaml", "agents/assistant/SOUL.md", "agents/assistant/AGENTS.md", "deploy/manifest.txt", "tests/agents/test_agent_configs.py"]
+convention_tags = ["coding-principles", "tdd", "boundaries", "security"]
+spec_ref = "docs/specs/002-finance.md"
+verification_command = "bash scripts/check.sh --all"
+working_dir = "."
+depends_on = [{ id = "TICK-712", reason = "daemon serves finance and calc" }]
+tests_passing = false

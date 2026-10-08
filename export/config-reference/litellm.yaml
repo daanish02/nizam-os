@@ -1,0 +1,39 @@
+model_list:
+  # Explicit entry for cost tracking on embedding calls.
+  - model_name: "google/gemini-embedding-2"
+    litellm_params:
+      model: "openrouter/google/gemini-embedding-2"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
+  - model_name: "*"  # catch-all: routes any unmatched model name to openrouter; named entries above take precedence
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      extra_headers:
+        HTTP-Referer: "https://nizam-os"
+        X-Title: "Nizam-OS"
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    redis_url: os.environ/REDIS_URL
+    ttl: 3600
+    supported_call_types:
+      - acompletion
+      - completion
+  drop_params: true  # strips hermes-specific params before forwarding — required for openrouter compatibility
+  request_timeout: 600
+  store_end_user: true  # records Discord user IDs in LiteLLM spend logs
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DB_URL
+  disable_spend_logs: false
+  allow_requests_on_db_unavailable: true
+  database_connection_pool_limit: 3
+  database_connection_timeout: 30

@@ -1,0 +1,309 @@
+# Feanor tag -> convention file mapping. Single source of truth.
+#
+# Read by scripts/resolve-context.py, not by an agent directly. Do not duplicate
+# this mapping into meta/context-resolver.md or agents/planner-agent.md — it lived
+# in both once, drifted, and nothing caught it.
+#
+# Fields per entry:
+#   files              paths relative to feanor/ (required)
+#   aliases            other tags resolving to this entry
+#   priority           1 security · 2 principles · 3 language · 4 domain · 5 devops
+#                      (the ladder in meta/context-resolver.md section 3; 1 is never dropped)
+#   language_qualified true  =>  go-<tag>, python-<tag>, nextjs-<tag>, typescript-<tag>
+#                      all resolve here, and the agent loads only that language's section
+#   requires_capability  optional capability that must be true in .feanor/profile.toml
+#
+# Validated by scripts/validate-okf.py: every path must exist, and every convention
+# file must be reachable by a tag or documented as path-matched only.
+
+[meta]
+version = "1.0.0"
+
+# ── Priority 1: security. Never dropped to make room. ────────────────────────
+
+[tags.security]
+files = ["conventions/cross-stack/security.md"]
+aliases = ["appsec"]
+priority = 1
+language_qualified = true
+
+[tags.access-control]
+files = ["conventions/cross-stack/access-control.md"]
+aliases = ["authorization", "idor", "ownership", "multi-tenancy", "mass-assignment"]
+priority = 1
+language_qualified = true
+
+[tags.untrusted-input]
+files = ["conventions/cross-stack/untrusted-input.md"]
+aliases = ["ssrf", "file-upload", "deserialization", "path-traversal"]
+priority = 1
+
+[tags.auth]
+files = ["conventions/cross-stack/auth.md"]
+aliases = ["authentication", "jwt", "session", "mfa"]
+priority = 1
+language_qualified = true
+
+[tags.secrets]
+files = ["conventions/cross-stack/secrets-management.md"]
+aliases = ["secrets-management", "credentials", "rotation"]
+priority = 1
+
+[tags.data-protection]
+files = ["conventions/cross-stack/data-protection.md"]
+aliases = ["pii", "classification", "encryption", "retention", "gdpr", "privacy"]
+priority = 1
+
+[tags.supply-chain]
+files = ["conventions/cross-stack/supply-chain.md"]
+aliases = ["pinning", "sbom", "lockfile"]
+priority = 1
+
+# ── Priority 2: universal principles. Mandatory on every code ticket. ────────
+
+[tags.coding-principles]
+files = ["conventions/coding-principles.md"]
+aliases = ["principles", "design-principles", "dry", "kiss", "yagni", "srp"]
+priority = 2
+
+[tags.tdd]
+files = ["conventions/tdd.md"]
+aliases = ["red-green-refactor", "seams"]
+priority = 2
+
+[tags.boundaries]
+files = ["conventions/cross-stack/module-boundaries.md"]
+aliases = ["module-boundaries", "layering", "imports"]
+priority = 2
+language_qualified = true
+
+[tags.error-handling]
+files = ["conventions/cross-stack/error-handling.md"]
+aliases = ["errors"]
+priority = 2
+language_qualified = true
+
+[tags.testing]
+files = ["conventions/cross-stack/testing.md"]
+aliases = ["tests"]
+priority = 2
+language_qualified = true
+
+[tags.comments]
+files = ["conventions/cross-stack/code-comments.md"]
+aliases = ["documentation", "docstrings"]
+priority = 2
+
+# ── Priority 3: language and framework. ──────────────────────────────────────
+
+[tags.python]
+files = ["conventions/python/project-layout.md", "conventions/python/code-style.md"]
+aliases = ["python-layout", "python-code-style", "python-typing", "python-naming"]
+priority = 3
+
+[tags.python-async]
+files = ["conventions/python/async-concurrency.md"]
+aliases = ["asyncio"]
+priority = 3
+
+[tags.go]
+files = ["conventions/go/project-layout.md", "conventions/go/code-style-naming.md"]
+aliases = ["go-layout", "go-code-style"]
+priority = 3
+
+[tags.go-concurrency]
+files = ["conventions/go/concurrency-context.md"]
+aliases = ["goroutines", "context"]
+priority = 3
+
+[tags.typescript]
+files = [
+  "conventions/typescript/type-system.md",
+  "conventions/typescript/module-system.md",
+  "conventions/typescript/code-style.md",
+  "conventions/typescript/tooling.md",
+]
+priority = 3
+
+[tags.nextjs]
+files = ["conventions/nextjs/project-layout.md", "conventions/nextjs/code-style-naming.md"]
+aliases = ["nextjs-layout", "nextjs-code-style"]
+priority = 3
+
+[tags.nextjs-components]
+files = ["conventions/nextjs/components-data.md"]
+aliases = ["server-components", "rsc"]
+priority = 3
+
+[tags.nextjs-styling]
+files = ["conventions/nextjs/styling-ui.md"]
+aliases = ["tailwind", "ui"]
+priority = 3
+
+[tags.nextjs-accessibility]
+files = ["conventions/nextjs/accessibility.md"]
+aliases = ["a11y", "wcag", "accessibility"]
+priority = 3
+
+[tags.nextjs-performance]
+files = ["conventions/nextjs/performance.md"]
+priority = 3
+
+# ── Priority 4: domain. ──────────────────────────────────────────────────────
+
+[tags.api-design]
+files = ["conventions/cross-stack/api-design.md"]
+aliases = ["pagination", "rest", "idempotency"]
+priority = 4
+
+[tags.database]
+files = ["conventions/cross-stack/database.md"]
+aliases = ["sql"]
+priority = 4
+
+[tags.db-connection]
+files = ["conventions/cross-stack/db-connection.md"]
+aliases = ["database-connection", "connection-pool"]
+priority = 4
+
+[tags.go-database]
+files = ["conventions/cross-stack/database.md", "conventions/go/database.md"]
+priority = 4
+
+[tags.middleware]
+files = ["conventions/cross-stack/middleware.md"]
+priority = 4
+language_qualified = true
+
+[tags.health]
+files = ["conventions/cross-stack/health-endpoints.md"]
+aliases = ["health-endpoint", "readiness", "liveness"]
+priority = 4
+
+[tags.rate-limiting]
+files = ["conventions/cross-stack/rate-limiting.md"]
+aliases = ["throttling"]
+priority = 4
+language_qualified = true
+
+[tags.observability]
+files = ["conventions/cross-stack/observability-logging.md"]
+aliases = ["logging", "logs"]
+priority = 4
+language_qualified = true
+
+[tags.library-docs]
+files = ["conventions/cross-stack/library-docs.md"]
+aliases = ["framework-docs", "docs-lookup"]
+priority = 4
+
+[tags.dependencies]
+files = ["conventions/cross-stack/dependency-management.md", "conventions/cross-stack/library-docs.md"]
+aliases = ["dependency-management"]
+priority = 4
+language_qualified = true
+
+[tags.caching]
+files = ["conventions/cross-stack/caching.md"]
+priority = 4
+language_qualified = true
+requires_capability = "caching"
+
+[tags.issue-reporting]
+files = ["conventions/cross-stack/issue-reporting.md"]
+aliases = ["bug-report", "feedback-widget"]
+priority = 4
+requires_capability = "issue_reporting"
+
+[tags.metrics]
+files = ["conventions/cross-stack/metrics.md"]
+aliases = ["prometheus", "grafana", "alerting", "slo"]
+priority = 4
+requires_capability = "metrics"
+
+[tags.tracing]
+files = ["conventions/cross-stack/tracing.md"]
+aliases = ["opentelemetry", "otel", "spans"]
+priority = 4
+requires_capability = "tracing"
+
+# ── Dialects. Always alongside the RDBMS-agnostic file. ──────────────────────
+
+[tags.postgresql]
+files = ["conventions/cross-stack/database.md", "conventions/databases/postgresql.md"]
+aliases = ["postgres", "pg"]
+priority = 4
+
+[tags.mysql]
+files = ["conventions/cross-stack/database.md", "conventions/databases/mysql.md"]
+priority = 4
+
+[tags.mariadb]
+files = ["conventions/cross-stack/database.md", "conventions/databases/mariadb.md"]
+priority = 4
+
+[tags.sqlserver]
+files = ["conventions/cross-stack/database.md", "conventions/databases/sqlserver.md"]
+aliases = ["mssql"]
+priority = 4
+
+[tags.oracle]
+files = ["conventions/cross-stack/database.md", "conventions/databases/oracle.md"]
+aliases = ["oracledb"]
+priority = 4
+
+[tags.sqlite]
+files = ["conventions/cross-stack/database.md", "conventions/databases/sqlite.md"]
+priority = 4
+
+# ── Priority 5: git, ops, and methods. ───────────────────────────────────────
+
+[tags.git]
+files = ["conventions/git/commit-format.md", "conventions/git/branch-strategy.md"]
+aliases = ["commit", "commits", "branching"]
+priority = 5
+
+[tags.pre-commit]
+files = ["conventions/git/pre-commit-hooks.md"]
+aliases = ["hooks"]
+priority = 5
+
+[tags.dependabot]
+files = ["conventions/git/dependabot.md"]
+priority = 5
+
+[tags.test-tiers]
+files = ["conventions/git/branch-test-tiers.md"]
+priority = 5
+
+[tags.repo-setup]
+files = ["conventions/git/github-repo-setup.md"]
+aliases = ["branch-protection"]
+priority = 5
+
+[tags.docker]
+files = ["conventions/ops/root-layout.md"]
+aliases = ["dockerfile", "containers", "ops"]
+priority = 5
+
+[tags.docker-python]
+files = ["conventions/ops/dockerfile-python.md"]
+priority = 5
+
+[tags.docker-go]
+files = ["conventions/ops/dockerfile-go.md"]
+priority = 5
+
+[tags.docker-nextjs]
+files = ["conventions/ops/dockerfile-nextjs.md"]
+priority = 5
+
+[tags.adrs]
+files = ["meta/adrs.md"]
+aliases = ["decisions", "adr"]
+priority = 5
+
+[tags.threat-model]
+files = ["meta/threat-model.md"]
+aliases = ["stride"]
+priority = 5

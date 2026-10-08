@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Feanor branch guard — installed as .git/hooks/pre-commit by `lattice add feanor`.
+#
+# Blocks commits made directly onto main or qa, per
+# conventions/git/branch-strategy.md: "Never commit directly to main or qa. All
+# changes land via a branch + merge."
+#
+# That rule was previously enforced by nothing at all. In a full live run the
+# project ended up with only main in its history and single commits of 74 files,
+# because the convention was prose and prose is silent when skipped.
+#
+# Bypass for a genuine exception with `git commit --no-verify`. Server-side
+# branch protection (see conventions/git/github-repo-setup.md) is the backstop
+# that --no-verify cannot reach.
+set -e
+
+# symbolic-ref, not rev-parse --abbrev-ref: on an unborn HEAD (the very first
+# commit in a repo) rev-parse prints the literal string "HEAD" to stdout while
+# exiting non-zero, which silently defeats a `|| echo ""` fallback.
+# symbolic-ref resolves the branch name correctly in that case too.
+CURRENT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
+
+case "$CURRENT_BRANCH" in
+  main|qa) ;;
+  *) exit 0 ;;
+esac
+
+echo ""
+echo "BLOCKED: direct commit to '$CURRENT_BRANCH'."
+echo ""
+echo "Work happens on a short-lived branch that merges back in:"
+echo "    feature/*  fix/*  ->  qa  ->  main"
+echo ""
+echo "What to do next — this keeps the changes you have already staged:"
+echo "  git checkout -b feature/<short-kebab-description>"
+echo "  git commit"
+echo ""
+echo "See conventions/git/branch-strategy.md for the full hierarchy and when"
+echo "hotfix/* may target main directly."
+echo ""
+exit 1

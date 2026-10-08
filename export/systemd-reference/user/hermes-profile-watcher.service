@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch Hermes profile files for changes and sync to .hermes
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/vazir/nizam-os/scripts/watchers/watch-hermes-profiles.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
