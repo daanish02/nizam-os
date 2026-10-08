@@ -6,7 +6,7 @@
 """
 inotify watcher for Hermes skill approval queue; fires Discord embed on new pending skill.
 Logs proposed/approved/rejected to each profile's skills/.audit.json.
-Requires: DISCORD_ADMIN_WEBHOOK (secrets/nizam-os.env via systemd EnvironmentFile).
+Requires: DISCORD_WEBHOOK_ALERTS (secrets/nizam-os.env via systemd EnvironmentFile).
 State: ~/.hermes/pending/.skill_notified (notified set), ~/.hermes/pending/.skill_pending_map (pending→profile+skill).
 """
 
@@ -34,7 +34,7 @@ NIZAM_PROFILES = Path(__file__).parent.parent.parent / "hermes" / "profiles"
 STATE_DIR = Path.home() / ".hermes" / "pending"
 NOTIFIED_FILE = STATE_DIR / ".skill_notified"
 PENDING_MAP_FILE = STATE_DIR / ".skill_pending_map"
-WEBHOOK_URL = os.environ.get("DISCORD_ADMIN_WEBHOOK", "")
+WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_ALERTS", "")
 
 ACTION_COLOURS = {
     "create": 0xF5A623,
@@ -106,10 +106,33 @@ def skill_body_excerpt(content: str, max_chars: int = 800) -> str:
 
 # ── Discord ───────────────────────────────────────────────────────────────────
 
+def send_discord_outcome(profile: str, outcome: str, skill_name: str, action: str) -> None:
+    """Post a Discord embed for an approved or rejected skill outcome."""
+    if not WEBHOOK_URL:
+        return
+    colour = 0x2ECC71 if outcome == "approved" else 0x2C3E50
+    embed: dict = {
+        "title": f"Skill {outcome}: `{skill_name}`",
+        "color": colour,
+        "fields": [
+            {"name": "Profile", "value": profile, "inline": True},
+            {"name": "Action", "value": action, "inline": True},
+            {"name": "Outcome", "value": outcome, "inline": True},
+        ],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        r = requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
+        r.raise_for_status()
+        log.info("notified Discord outcome: %s %s (%s)", outcome, skill_name, profile)
+    except Exception as e:
+        log.error("Discord outcome POST failed: %s", e)
+
+
 def send_discord(record: dict) -> None:
     """Post a Discord embed for a pending skill approval request."""
     if not WEBHOOK_URL:
-        log.warning("DISCORD_ADMIN_WEBHOOK not set — cannot notify")
+        log.warning("DISCORD_WEBHOOK_ALERTS not set — cannot notify")
         return
 
     pending_id = record.get("id") or ""
@@ -213,8 +236,10 @@ def on_pending_deleted(filename: str, pending_map: dict) -> None:
         return
     profile = entry["profile"]
     skill_name = entry["skill_name"]
+    action = entry.get("action", "create")
     write_audit(profile, "rejected", skill_name, "user",
-                note=f"pending file removed without SKILL.md appearing")
+                note="pending file removed without SKILL.md appearing")
+    send_discord_outcome(profile, "rejected", skill_name, action)
     log.info("audit: rejected %s (%s)", skill_name, profile)
 
 
@@ -235,13 +260,16 @@ def on_skill_created(path: Path, pending_map: dict) -> None:
             break
 
     if matched_file:
+        action = pending_map[matched_file].get("action", "create")
         pending_map.pop(matched_file, None)
         write_audit(profile, "approved", skill_name, "user",
                     note="SKILL.md appeared in skills dir after pending gate")
+        send_discord_outcome(profile, "approved", skill_name, action)
     else:
         # SKILL.md appeared but wasn't in pending map (pre-SAVE or manual) — still log
         write_audit(profile, "approved", skill_name, "user",
                     note="SKILL.md appeared (not tracked in pending map — pre-SAVE or manual)")
+        send_discord_outcome(profile, "approved", skill_name, "unknown")
 
 
 # ── Startup scan ──────────────────────────────────────────────────────────────
