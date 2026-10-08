@@ -18,7 +18,6 @@ def upsert_note(
     file_path: str,
     title: str,
     domain: str,
-    subdomain: str,
     source: str,
     content: str,
     tags: list[str],
@@ -35,14 +34,13 @@ def upsert_note(
         row = conn.execute(
             """
             INSERT INTO knowledge.vault_index
-                (file_path, title, domain, subdomain, source, source_url,
+                (file_path, title, domain, source, source_url,
                  source_author, tags, status, confidence, content,
                  content_hash, date_created, date_modified)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (file_path) DO UPDATE SET
                 title          = EXCLUDED.title,
                 domain         = EXCLUDED.domain,
-                subdomain      = EXCLUDED.subdomain,
                 source         = EXCLUDED.source,
                 source_url     = EXCLUDED.source_url,
                 source_author  = EXCLUDED.source_author,
@@ -56,7 +54,7 @@ def upsert_note(
             RETURNING id
             """,
             (
-                file_path, title, domain, subdomain, source, source_url,
+                file_path, title, domain, source, source_url,
                 source_author, tags, status, confidence, content,
                 chash, date_created, date_modified,
             ),

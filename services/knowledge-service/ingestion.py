@@ -23,7 +23,6 @@ def add_note(
     *,
     title: str,
     domain: str,
-    subdomain: str,
     source: str,
     content: str,
     tags: list[str],
@@ -39,7 +38,6 @@ def add_note(
     metadata = {
         "title": title,
         "domain": domain,
-        "subdomain": subdomain,
         "source": source,
         "tags": tags,
         "status": status,
@@ -53,24 +51,19 @@ def add_note(
         metadata["source_author"] = source_author
 
     if not approved:
-        svc.audit.log(
-            profile=_PROFILE, action="note_draft",
-            title=title, approved=False,
-            details={"domain": domain, "subdomain": subdomain},
-        )
         return {
             "status": "draft",
             "message": "Review the draft. Call add_note with approved=True to write.",
             "draft": render_draft(metadata, content),
         }
 
-    path = note_path(title, domain, subdomain)
+    path = note_path(title, domain)
     write_note(path, metadata, content)
 
     note_id = upsert_note(
         svc,
         file_path=path,
-        title=title, domain=domain, subdomain=subdomain,
+        title=title, domain=domain,
         source=source, content=content, tags=tags,
         status=status, confidence=confidence,
         source_url=source_url, source_author=source_author,
@@ -79,9 +72,10 @@ def add_note(
     upsert_embedding(svc, note_path=path, content=content)
 
     svc.audit.log(
-        profile=_PROFILE, action="note_create",
-        file_path=path, title=title, approved=True,
-        details={"id": note_id, "domain": domain},
+        actor=_PROFILE,
+        schema_name="knowledge", table_name="vault_index", operation="INSERT",
+        row_id=note_id,
+        after_state={"title": title, "domain": domain, "file_path": path},
     )
     return {"status": "created", "id": note_id, "file_path": path}
 
@@ -110,10 +104,6 @@ def update_note(
     metadata["date_modified"] = str(date.today())
 
     if not approved:
-        svc.audit.log(
-            profile=_PROFILE, action="note_update_draft",
-            file_path=file_path, approved=False,
-        )
         return {
             "status": "draft",
             "message": "Review changes. Call update_note with approved=True to save.",
@@ -126,7 +116,6 @@ def update_note(
         file_path=file_path,
         title=metadata["title"],
         domain=metadata["domain"],
-        subdomain=metadata["subdomain"],
         source=metadata.get("source", ""),
         content=body,
         tags=metadata.get("tags", []),
@@ -136,9 +125,10 @@ def update_note(
     upsert_embedding(svc, note_path=file_path, content=body)
 
     svc.audit.log(
-        profile=_PROFILE, action="note_update",
-        file_path=file_path, title=metadata["title"], approved=True,
-        details={"id": note_id},
+        actor=_PROFILE,
+        schema_name="knowledge", table_name="vault_index", operation="UPDATE",
+        row_id=note_id,
+        after_state={"title": metadata["title"], "file_path": file_path},
     )
     return {"status": "updated", "id": note_id, "file_path": file_path}
 

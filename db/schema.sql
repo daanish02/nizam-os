@@ -1,7 +1,7 @@
 \restrict dbmate
 
--- Dumped from database version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
--- Dumped by pg_dump version 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+-- Dumped from database version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -19,6 +19,13 @@ SET row_security = off;
 --
 
 CREATE SCHEMA audit;
+
+
+--
+-- Name: knowledge; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA knowledge;
 
 
 --
@@ -91,6 +98,84 @@ CREATE SEQUENCE audit.log_id_seq
 --
 
 ALTER SEQUENCE audit.log_id_seq OWNED BY audit.log.id;
+
+
+--
+-- Name: vault_embeddings; Type: TABLE; Schema: knowledge; Owner: -
+--
+
+CREATE TABLE knowledge.vault_embeddings (
+    id bigint NOT NULL,
+    note_path text NOT NULL,
+    content_hash text NOT NULL,
+    embedding public.vector(768) NOT NULL,
+    model text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: vault_embeddings_id_seq; Type: SEQUENCE; Schema: knowledge; Owner: -
+--
+
+CREATE SEQUENCE knowledge.vault_embeddings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: vault_embeddings_id_seq; Type: SEQUENCE OWNED BY; Schema: knowledge; Owner: -
+--
+
+ALTER SEQUENCE knowledge.vault_embeddings_id_seq OWNED BY knowledge.vault_embeddings.id;
+
+
+--
+-- Name: vault_index; Type: TABLE; Schema: knowledge; Owner: -
+--
+
+CREATE TABLE knowledge.vault_index (
+    id bigint NOT NULL,
+    file_path text NOT NULL,
+    title text NOT NULL,
+    domain text NOT NULL,
+    source text NOT NULL,
+    source_url text,
+    source_author text,
+    tags text[] DEFAULT '{}'::text[] NOT NULL,
+    status text DEFAULT 'raw'::text NOT NULL,
+    confidence text DEFAULT 'medium'::text NOT NULL,
+    content text NOT NULL,
+    content_hash text NOT NULL,
+    date_created date,
+    date_modified date,
+    fts_vector tsvector GENERATED ALWAYS AS (to_tsvector('english'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(content, ''::text)))) STORED,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: vault_index_id_seq; Type: SEQUENCE; Schema: knowledge; Owner: -
+--
+
+CREATE SEQUENCE knowledge.vault_index_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: vault_index_id_seq; Type: SEQUENCE OWNED BY; Schema: knowledge; Owner: -
+--
+
+ALTER SEQUENCE knowledge.vault_index_id_seq OWNED BY knowledge.vault_index.id;
 
 
 --
@@ -1652,6 +1737,20 @@ ALTER TABLE ONLY audit.log ALTER COLUMN id SET DEFAULT nextval('audit.log_id_seq
 
 
 --
+-- Name: vault_embeddings id; Type: DEFAULT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_embeddings ALTER COLUMN id SET DEFAULT nextval('knowledge.vault_embeddings_id_seq'::regclass);
+
+
+--
+-- Name: vault_index id; Type: DEFAULT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_index ALTER COLUMN id SET DEFAULT nextval('knowledge.vault_index_id_seq'::regclass);
+
+
+--
 -- Name: LiteLLM_ModelTable id; Type: DEFAULT; Schema: litellm; Owner: -
 --
 
@@ -1664,6 +1763,38 @@ ALTER TABLE ONLY litellm."LiteLLM_ModelTable" ALTER COLUMN id SET DEFAULT nextva
 
 ALTER TABLE ONLY audit.log
     ADD CONSTRAINT log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vault_embeddings vault_embeddings_note_path_key; Type: CONSTRAINT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_embeddings
+    ADD CONSTRAINT vault_embeddings_note_path_key UNIQUE (note_path);
+
+
+--
+-- Name: vault_embeddings vault_embeddings_pkey; Type: CONSTRAINT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_embeddings
+    ADD CONSTRAINT vault_embeddings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vault_index vault_index_file_path_key; Type: CONSTRAINT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_index
+    ADD CONSTRAINT vault_index_file_path_key UNIQUE (file_path);
+
+
+--
+-- Name: vault_index vault_index_pkey; Type: CONSTRAINT; Schema: knowledge; Owner: -
+--
+
+ALTER TABLE ONLY knowledge.vault_index
+    ADD CONSTRAINT vault_index_pkey PRIMARY KEY (id);
 
 
 --
@@ -2192,6 +2323,34 @@ ALTER TABLE ONLY litellm."LiteLLM_WorkflowRun"
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: vault_embeddings_hnsw_idx; Type: INDEX; Schema: knowledge; Owner: -
+--
+
+CREATE INDEX vault_embeddings_hnsw_idx ON knowledge.vault_embeddings USING hnsw (embedding public.vector_cosine_ops);
+
+
+--
+-- Name: vault_index_domain_idx; Type: INDEX; Schema: knowledge; Owner: -
+--
+
+CREATE INDEX vault_index_domain_idx ON knowledge.vault_index USING btree (domain);
+
+
+--
+-- Name: vault_index_fts_idx; Type: INDEX; Schema: knowledge; Owner: -
+--
+
+CREATE INDEX vault_index_fts_idx ON knowledge.vault_index USING gin (fts_vector);
+
+
+--
+-- Name: vault_index_status_idx; Type: INDEX; Schema: knowledge; Owner: -
+--
+
+CREATE INDEX vault_index_status_idx ON knowledge.vault_index USING btree (status);
 
 
 --
@@ -3354,4 +3513,5 @@ ALTER TABLE ONLY litellm."LiteLLM_WorkflowMessage"
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
-    ('001');
+    ('001'),
+    ('002');
