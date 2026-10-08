@@ -3,7 +3,7 @@ Description=Promtail for nizam-os logs
 After=network.target
 
 [Service]
-User=root   # root required for access to system log directories
+User=root
 Group=root
 ExecStart=/usr/bin/promtail -config.file /etc/promtail/promtail-nizam-os.yaml  # config deployed by 001-foundation.sh from config/promtail.yaml
 Restart=on-failure

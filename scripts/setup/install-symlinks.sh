@@ -29,6 +29,14 @@ chmod 644 /etc/logrotate.d/nizam-os
 systemctl daemon-reload
 echo "  reloaded system daemon"
 
+# Systemd user units (vazir) — skill/profile watchers
+USER_SYSTEMD="$USER_HOME/.config/systemd/user"
+sudo -u vazir mkdir -p "$USER_SYSTEMD"
+sudo -u vazir ln -sf "$NIZAM_OS/systemd/user/hermes-skill-watcher.service"   "$USER_SYSTEMD/hermes-skill-watcher.service"
+sudo -u vazir ln -sf "$NIZAM_OS/systemd/user/hermes-profile-watcher.service" "$USER_SYSTEMD/hermes-profile-watcher.service"
+sudo -u vazir XDG_RUNTIME_DIR="/run/user/$(id -u vazir)" systemctl --user daemon-reload
+echo "  reloaded user daemon"
+
 # Hermes runtime symlinks for admin (all created as vazir, not root)
 HERMES_ADMIN_RUNTIME="$USER_HOME/.hermes/profiles/admin"
 
@@ -65,6 +73,13 @@ if [[ ! -L "$HERMES_ADMIN_RUNTIME/skills" ]] && [[ -d "$HERMES_ADMIN_RUNTIME/ski
     rm -rf "$HERMES_ADMIN_RUNTIME/skills"
     echo "  seeded: hermes/profiles/admin/skills"
 fi
+if [[ ! -L "$HERMES_ADMIN_RUNTIME/pending" ]] && [[ -d "$HERMES_ADMIN_RUNTIME/pending" ]]; then
+    sudo -u vazir mkdir -p "$NIZAM_OS/hermes/profiles/admin/pending"
+    rsync -a --no-links "$HERMES_ADMIN_RUNTIME/pending/" "$NIZAM_OS/hermes/profiles/admin/pending/"  # --no-links: prevents circular refs
+    chown -R vazir:vazir "$NIZAM_OS/hermes/profiles/admin/pending/"
+    rm -rf "$HERMES_ADMIN_RUNTIME/pending"
+    echo "  seeded: hermes/profiles/admin/pending"
+fi
 chown -R vazir:vazir "$NIZAM_OS/hermes/profiles/admin"
 
 sudo -u vazir ln -sf "$NIZAM_OS/hermes/profiles/admin/SOUL.md"     "$HERMES_ADMIN_RUNTIME/SOUL.md"
@@ -73,6 +88,7 @@ sudo -u vazir ln -sf "$NIZAM_OS/secrets/hermes-admin.env"                 "$HERM
 sudo -u vazir ln -sf "$NIZAM_OS/config/hermes-admin-config.yaml"          "$HERMES_ADMIN_RUNTIME/config.yaml"
 sudo -u vazir ln -sf "$NIZAM_OS/hermes/profiles/admin/memories"    "$HERMES_ADMIN_RUNTIME/memories"
 sudo -u vazir ln -sf "$NIZAM_OS/hermes/profiles/admin/skills"      "$HERMES_ADMIN_RUNTIME/skills"
+sudo -u vazir ln -sf "$NIZAM_OS/hermes/profiles/admin/pending"     "$HERMES_ADMIN_RUNTIME/pending"
 
 echo "  hermes-gateway-admin.service managed by Hermes (admin gateway install)"
 
@@ -97,7 +113,8 @@ ls -la "$USER_HOME/.hermes/profiles/admin/SOUL.md" \
        "$USER_HOME/.hermes/profiles/admin/.env" \
        "$USER_HOME/.hermes/profiles/admin/config.yaml" \
        "$USER_HOME/.hermes/profiles/admin/memories" \
-       "$USER_HOME/.hermes/profiles/admin/skills"
+       "$USER_HOME/.hermes/profiles/admin/skills" \
+       "$USER_HOME/.hermes/profiles/admin/pending"
 
 echo ""
 echo "Grafana: configure datasources and import dashboard manually."

@@ -25,4 +25,4 @@ allowed_channels must use hardcoded IDs in config.yaml — ${VAR} refs fail beca
 
 SAVE framework: ~/nizam-os/scripts/save/ — governs agent config mutations. Consult before suggesting config changes.
 
-Memory tool is disabled (memory_enabled: false). This file is manually seeded. Changes require editing the file directly in the repo.
+Memory tool is enabled (memory_enabled: true, write_approval: true). All memory writes require Danish's manual approval via Discord before committing. Audit trail in ~/nizam-os/hermes/profiles/admin/memories/.audit.json.

@@ -98,9 +98,82 @@ watch_env_encrypt() {
     done
 }
 
-trap 'kill $(jobs -p) 2>/dev/null; exit 0' EXIT INT TERM  # reap all three background watcher processes on exit
+
+# ── Direction 4: memories close_write → .audit.json + Discord notification ─────
+watch_memory_audit() {
+    local secrets_file="$NIZAM_OS/secrets/nizam-os.env"
+    local webhook=""
+    if [[ -f "$secrets_file" ]]; then
+        webhook=$(grep '^DISCORD_WEBHOOK_ALERTS=' "$secrets_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)
+    fi
+
+    inotifywait -m -r -e close_write --format '%w%f' "$NIZAM_PROFILES" | while IFS= read -r fullpath; do
+        rel="${fullpath#$NIZAM_PROFILES/}"
+        profile_name="${rel%%/*}"
+        rest="${rel#*/}"
+
+        # Only memories/*.md files; skip .audit.json and non-md files
+        [[ "$rest" == memories/*.md ]] || continue
+        filename="${rest#memories/}"
+
+        audit_file="$NIZAM_PROFILES/$profile_name/memories/.audit.json"
+        nizam_rel="${fullpath#$NIZAM_OS/}"
+        diff_summary=$(git -C "$NIZAM_OS" diff HEAD -- "$nizam_rel" 2>/dev/null | head -c 500 || true)
+        timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # If any session was active in the last 60 seconds, tag as agent-approved
+        actor="manual"
+        sessions_dir="$HOME/.hermes/profiles/$profile_name/sessions"
+        if [[ -d "$sessions_dir" ]] && find "$sessions_dir" -name "*.json" -mmin -1 2>/dev/null | grep -q .; then
+            actor="agent-approved"
+        fi
+
+        AUDIT_FILE="$audit_file" PROFILE="$profile_name" FILE="$filename" \
+        ACTOR="$actor" DIFF="$diff_summary" TS="$timestamp" \
+        python3 -c "
+import json, os
+from pathlib import Path
+audit_file = Path(os.environ['AUDIT_FILE'])
+entries = json.loads(audit_file.read_text()) if audit_file.exists() else []
+entries.append({'timestamp': os.environ['TS'], 'profile': os.environ['PROFILE'],
+    'file': os.environ['FILE'], 'actor': os.environ['ACTOR'],
+    'diff_summary': os.environ['DIFF'][:500]})
+audit_file.write_text(json.dumps(entries, indent=2) + '\n')
+" || true
+
+        echo "hermes-profile-watcher: [memory-audit] $profile_name/memories/$filename (actor=$actor)"
+
+        if [[ -n "$webhook" ]]; then
+            WEBHOOK="$webhook" PROFILE="$profile_name" FILE="$filename" \
+            ACTOR="$actor" DIFF="${diff_summary:0:300}" TS="$timestamp" \
+            python3 -c "
+import json, os, urllib.request
+diff = os.environ['DIFF']
+diff_field = ('\`\`\`diff\n' + diff + '\n\`\`\`') if diff else '(no staged diff)'
+payload = {'embeds': [{'title': 'Memory updated: \`' + os.environ['FILE'] + '\`',
+    'color': 5793266,
+    'fields': [
+        {'name': 'Profile', 'value': os.environ['PROFILE'], 'inline': True},
+        {'name': 'Actor', 'value': os.environ['ACTOR'], 'inline': True},
+        {'name': 'Time', 'value': os.environ['TS'], 'inline': True},
+        {'name': 'Diff', 'value': diff_field, 'inline': False},
+    ]}]}
+req = urllib.request.Request(os.environ['WEBHOOK'],
+    data=json.dumps(payload).encode(),
+    headers={'Content-Type': 'application/json'}, method='POST')
+try:
+    urllib.request.urlopen(req, timeout=10)
+except Exception as e:
+    print('Discord POST failed:', e)
+" || true
+        fi
+    done
+}
+
+trap 'kill $(jobs -p) 2>/dev/null; exit 0' EXIT INT TERM  # reap all background watcher processes on exit
 
 watch_nizam_to_hermes &
 watch_hermes_to_nizam &
 watch_env_encrypt &
+watch_memory_audit &
 wait

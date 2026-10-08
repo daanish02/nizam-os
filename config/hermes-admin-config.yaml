@@ -101,8 +101,8 @@ tool_loop_guardrails:
 display:
   tool_progress: all
 memory:
-  memory_enabled: false
-  user_profile_enabled: false
+  memory_enabled: true
+  user_profile_enabled: true
   write_approval: true
   memory_char_limit: 2200
   user_char_limit: 1375

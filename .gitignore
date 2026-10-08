@@ -9,11 +9,14 @@ build/
 *.py[cod]
 
 *.env
+!*.env.example
 *.cookies.txt
+secrets/cookies.txt
 *.key
 *.pem
 nizam-age-key.txt
 secrets.yaml
+config/hermes-*-config.yaml
 
 /tmp/
 *.prom
@@ -25,4 +28,6 @@ logs/*.gz
 !logs/.gitkeep
 
 archive/
+feanor/
+.feanor/
 skills/
