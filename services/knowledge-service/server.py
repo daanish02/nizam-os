@@ -89,7 +89,7 @@ def list_notes(
     with svc.db() as conn:
         rows = conn.execute(
             f"""
-            SELECT id, file_path, title, domain, subdomain,
+            SELECT id, file_path, title, domain,
                    source, tags, status, confidence, date_created
             FROM knowledge.vault_index
             WHERE {where}
@@ -110,7 +110,6 @@ def list_notes(
 def add_note(
     title: str,
     domain: str,
-    subdomain: str,
     source: str,
     content: str,
     tags: list[str],
@@ -132,7 +131,7 @@ def add_note(
     """
     return _add_note(
         svc,
-        title=title, domain=domain, subdomain=subdomain,
+        title=title, domain=domain,
         source=source, content=content, tags=tags,
         approved=approved, status=status, confidence=confidence,
         source_url=source_url, source_author=source_author,
@@ -170,7 +169,6 @@ def ingest_url(
     url: str,
     approved: bool = False,
     domain: str | None = None,
-    subdomain: str | None = None,
     tags: list[str] | None = None,
     title: str | None = None,
     confidence: str = "medium",
@@ -178,15 +176,14 @@ def ingest_url(
     """Fetch a URL and create a vault note from its content.
 
     Two-pass workflow:
-      Pass 1 — omit domain/subdomain: fetches page, returns title + content preview
+      Pass 1 — omit domain: fetches page, returns title + content preview
                so you can read and classify it yourself.
-      Pass 2 — supply domain, subdomain, tags, approved=False: returns full draft.
+      Pass 2 — supply domain, tags, approved=False: returns full draft.
       Pass 3 — approved=True: writes and indexes.
 
     Args:
         url: The URL to fetch.
         domain: MECE domain. Omit on first call to read content first.
-        subdomain: Domain subdivision.
         tags: Free-form tags.
         title: Override the page title (optional).
     """
@@ -201,13 +198,13 @@ def ingest_url(
             "title": page_title,
             "content_preview": text[:2000],
             "word_count": len(text.split()),
-            "instruction": "Read the content above. Choose domain, subdomain, tags. Then call ingest_url again with those fields.",
+            "instruction": "Read the content above. Choose domain and tags. Then call ingest_url again with those fields.",
         }
 
     return _add_note(
         svc,
         title=title or page_title,
-        domain=domain, subdomain=subdomain or "general",
+        domain=domain,
         source="article", content=text,
         tags=tags or [], approved=approved,
         confidence=confidence, source_url=url,
@@ -219,7 +216,6 @@ def ingest_youtube(
     url: str,
     approved: bool = False,
     domain: str | None = None,
-    subdomain: str | None = None,
     tags: list[str] | None = None,
     title: str | None = None,
     confidence: str = "medium",
@@ -227,9 +223,9 @@ def ingest_youtube(
     """Fetch a YouTube transcript and create a vault note.
 
     Two-pass workflow:
-      Pass 1 — omit domain/subdomain: fetches transcript, returns preview
+      Pass 1 — omit domain: fetches transcript, returns preview
                so you can read and classify the content yourself.
-      Pass 2 — supply domain, subdomain, tags, approved=False: returns full draft.
+      Pass 2 — supply domain, tags, approved=False: returns full draft.
       Pass 3 — approved=True: writes and indexes.
 
     Args:
@@ -253,7 +249,7 @@ def ingest_youtube(
             "transcript_source": result.get("source"),
             "content_preview": content[:2000],
             "word_count": len(content.split()),
-            "instruction": "Read the content above. Choose domain, subdomain, tags. Then call ingest_youtube again with those fields.",
+            "instruction": "Read the content above. Choose domain and tags. Then call ingest_youtube again with those fields.",
         }
         if result.get("warning"):
             preview["warning"] = result["warning"]
@@ -262,7 +258,7 @@ def ingest_youtube(
     return _add_note(
         svc,
         title=note_title,
-        domain=domain, subdomain=subdomain or "general",
+        domain=domain,
         source="video", content=content,
         tags=tags or [], approved=approved,
         confidence=effective_confidence, source_url=url,

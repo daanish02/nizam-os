@@ -1,5 +1,6 @@
-"""Fetch YouTube transcripts via three-tier fallback.
+"""Fetch YouTube transcripts via four-tier fallback.
 
+Tier 0: Supadata API (needs SUPADATA_API_KEY — works from cloud IPs)
 Tier 1: youtube-transcript-api (fastest, no key needed)
 Tier 2: yt-dlp subtitle download (more browser-like, separate IP path)
 Tier 3: YouTube Data API v3 captions (official, needs YOUTUBE_API_KEY)
@@ -11,6 +12,39 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+
+def _tier0(video_id: str) -> dict:
+    """Fetch via Supadata API (cloud-IP friendly). Needs SUPADATA_API_KEY."""
+    import httpx
+
+    api_key = os.environ.get("SUPADATA_API_KEY", "")
+    if not api_key:
+        return {"error": "SUPADATA_API_KEY not set", "video_id": video_id}
+
+    try:
+        resp = httpx.get(
+            "https://api.supadata.ai/v1/youtube/transcript",
+            params={"videoId": video_id, "text": "true"},
+            headers={"x-api-key": api_key},
+            timeout=30,
+        )
+        if resp.status_code == 402:
+            return {"error": "Supadata: quota exhausted", "video_id": video_id}
+        if resp.status_code == 404:
+            return {"error": "Supadata: transcript not found for this video", "video_id": video_id}
+        resp.raise_for_status()
+        data = resp.json()
+        content = data.get("content", "")
+        if not content:
+            return {"error": "Supadata: empty transcript", "video_id": video_id}
+        return {
+            "video_id": video_id,
+            "full_text": content,
+            "source": "supadata",
+        }
+    except Exception as exc:
+        return {"error": f"Supadata: {exc}", "video_id": video_id}
 
 
 def _extract_video_id(url_or_id: str) -> str:
@@ -261,6 +295,10 @@ def fetch_transcript(url: str, languages: list[str] | None = None) -> dict:
     video_id = _extract_video_id(url)
     langs = languages or ["en"]
 
+    result0 = _tier0(video_id)
+    if "error" not in result0:
+        return result0
+
     result = _tier1(video_id, langs)
     if "error" not in result:
         return result
@@ -276,6 +314,7 @@ def fetch_transcript(url: str, languages: list[str] | None = None) -> dict:
     return {
         "error": "All transcript methods failed.",
         "video_id": video_id,
+        "tier0": result0.get("error"),
         "tier1": result.get("error"),
         "tier2": result2.get("error"),
         "tier3": result3.get("error"),

@@ -11,16 +11,16 @@ VAULT_ROOT = os.environ.get("VAULT_ROOT", os.path.expanduser("~/nizam-vault"))
 COMMONS_DIR = os.path.join(VAULT_ROOT, "commons")
 
 DOMAINS = {
-    "technology",
-    "science",
-    "business",
-    "finance-economics",
-    "philosophy-ethics",
-    "health-wellness",
-    "arts-culture",
-    "history-society",
-    "language-communication",
-    "personal-development",
+    "Mind & Behavior",
+    "Mathematics & Logic",
+    "Physical Sciences",
+    "Life Sciences",
+    "Earth & Space",
+    "Technology & Engineering",
+    "Intelligence & Computation",
+    "Economics & Finance",
+    "Society & Culture",
+    "Creative Arts",
 }
 
 
@@ -32,9 +32,9 @@ def slugify(text: str) -> str:
     return re.sub(r"[\s_]+", "-", text)
 
 
-def note_path(title: str, domain: str, subdomain: str) -> str:
+def note_path(title: str, domain: str) -> str:
     """Return the canonical file path for a note under commons/."""
-    filename = f"{slugify(domain)}--{slugify(subdomain)}--{slugify(title)}.md"
+    filename = f"{slugify(domain)}--{slugify(title)}.md"
     return os.path.join(COMMONS_DIR, filename)
 
 

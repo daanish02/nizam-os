@@ -99,7 +99,7 @@ def hybrid_search(
 
         rows = conn.execute(
             f"""
-            SELECT id, file_path, title, domain, subdomain,
+            SELECT id, file_path, title, domain,
                    source, tags, status, confidence, date_created
             FROM knowledge.vault_index
             WHERE id = ANY(%s) {domain_filter}
