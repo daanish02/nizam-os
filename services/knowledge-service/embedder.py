@@ -16,7 +16,7 @@ def _embed(text: str, api_key: str) -> list[float]:
     resp = httpx.post(
         "http://localhost:4000/embeddings",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": _MODEL, "input": text[:_MAX_CHARS]},
+        json={"model": _MODEL, "input": text[:_MAX_CHARS], "dimensions": 768},
         timeout=30,
     )
     resp.raise_for_status()
