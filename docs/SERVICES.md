@@ -1,218 +1,264 @@
+---
+title: Services — nizam-os (Personal Domain)
+status: DRAFT
+version: 0.2.0
+date: 2026-09-10
+scope: personal
+derived_from: docs/ARCHITECTURE.md, docs/SRS.md
+---
+
 # Services
 
-All MCP services run on `127.0.0.1` only. Agents connect via `url: http://127.0.0.1:PORT/mcp`. One service can serve multiple agents; each agent sees only the tool subset specified in its `config.yaml` `tools.include` list.
+The capability surface: what each service owns, who may call it, and the
+contract it holds to. Concrete tool signatures, parameters and tunables are
+specification tier and live in `docs/specs/`.
 
-Services are independent of agents. Adding capability means building a new service or updating existing service, not modifying an existing agent.
+**Two rules shape everything here.**
 
----
+Agents hold no state access. Every read and write goes through a service, and
+a service connects to the database as its own role. Isolation is enforced below
+the application layer *(C-07, C-08)*.
 
-## Port map
+A service does not know which agent is calling it. Capability is filtered on
+the agent's side by its declared set. This is what makes the roster cheap to
+change: adding capability means building or extending a service, never editing
+an agent.
 
-| Port | Service | Domain |
-|------|---------|--------|
-| 3000 | Grafana | Observability |
-| 3001 | Langfuse | Observability |
-| 3100 | Loki | Observability (managed by nizam-dotfiles) |
-| 4000 | LiteLLM proxy | Shared |
-| 8100 | `knowledge-service` | Personal |
-| 8101 | `math-service` | Shared |
-| 8102 | `finance-service` | Personal + Business |
-| 8103 | `personal-service` | Personal |
-| 8104 | `investment-service` | Personal |
-| 8105 | `crm-service` | Business |
-| 8106 | `analytics-service` | Business |
+> **Placeholders.** `[PENDING — SRS Q<n>]` marks a contract detail that depends
+> on an unresolved question in `docs/SRS.md`. Nothing marked that way has been
+> assumed.
 
 ---
 
-## knowledge-service
+## Surface
 
-**Port:** 8100  
-**DB role:** `svc_knowledge`  
-**Consumers:** curator and researcher (all tools), investor (read and write), cto and cmo (read-only subset)
+All services bind to loopback only *(C-25)*. Ports are an implementation
+detail recorded in `docs/specs/`; nothing outside the machine can reach any of
+them.
 
-**Responsibility:** Manages the knowledge vault (`~/nizam-vault/`). Handles ingestion from URLs, YouTube, PDFs, and images. Enforces the approval workflow before any vault write. Maintains the vault index and embeddings in PostgreSQL. Exposes search over the vault (keyword, semantic, hybrid).
-
-**Contract:** No vault write without owner approval. Agent suggests classification (areas, tags, title) — owner never supplies these manually. Every ingest is a two-pass operation: draft → approval → write.
-
-**Key capability boundaries:**
-- curator can read and write.
-- researcher can read and write — research findings are stored to vault as permanent output.
-- cto and cmo can search and read notes only — no writes.
-- investor can read and write — Shariah screening results and due diligence notes stored as structured vault entries.
-- No other agent has access.
-
-> Concrete tool definitions, tunables, and embedding model choices: [SPECS](docs/specs/).
+| Service | Owns | Callers | State |
+| :--- | :--- | :--- | :--- |
+| `knowledge` | Vault ingestion, classification, indexing, retrieval | Noor, Hakim, Rashid, Ayah (read only) | `knowledge` schema + the vault |
+| `personal` | Tasks, habits, goals, journal | Ayah | `personal` schema + journal files |
+| `finance` | Transactions, accounts, budgets, reconciliation, zakat | Ayah | `finance_personal` schema |
+| `math` | Exact arithmetic on money | Ayah, Rashid | None |
+| `investment` | Brokerage reads | Rashid | None |
 
 ---
 
-## math-service
+## `knowledge`
 
-**Port:** 8101  
-**Consumers:** assistant, cfo and investor (all tools)
+**Owns** the owner's vault: taking a source in, deciding what it is, storing it
+durably, and finding it again.
 
-**Responsibility:** Arbitrary-precision arithmetic as an agent-callable MCP service. Covers financial rounding, currency conversion with sub-unit handling, compound interest, amortization, and zakat arithmetic. Exists so agents never do financial math inline.
+**Capabilities** — ingest from a web link, a video, or a document; propose a
+classification; write an approved note; retrieve by meaning and by wording;
+read a note.
 
-**Contract:** Stateless — no DB access, no writes. finance-service also uses internal precision helpers for sub-unit conversion; math-service is for calculations that require explicit agent invocation or cross-service reuse. investor uses math-service for arithmetic calculations.
+**Contract**
 
----
+- **No vault write without the owner's approval.** Ingestion is two-pass:
+  produce a complete draft, present it, write only on approval. A rejected
+  draft leaves nothing behind *(FR.03.4.1)*.
+- **The service proposes the classification; the owner never supplies it.**
+  Title, subject areas and tags are the service's job. Asking the owner to
+  categorise would reintroduce the filing work the capability exists to remove
+  *(FR.03.2.1)*.
+- Subject areas come from a controlled vocabulary; tags are unconstrained
+  *(FR.03.2.2)*.
+- **The vault file is authoritative.** The index is derived and rebuildable
+  from files alone *(NFR.07, NFR.08)*.
+- Retrieval combines meaning-based and word-based matching into one ranked
+  result, and **degrades to word-based alone when embedding is unavailable,
+  saying so** rather than failing *(FR.03.3.2, FR.03.3.3)*.
+- Extraction attempts an alternative method before reporting failure
+  *(FR.03.1.3)*.
 
-## finance-service
+**Boundaries** — Noor and Hakim read and write. Rashid writes screening notes
+and reads. Ayah reads only; the assistant does not curate.
 
-**Port:** 8102  
-**DB role (personal):** `svc_finance_personal`  
-**DB role (business):** `svc_finance_business`  
-**Consumers (personal):** assistant (all personal tools)  
-**Consumers (business):** cfo (all business tools), coo (2 read-only tools)
-
-**Responsibility:** Personal finance — transaction logging, balance reporting, monthly reconciliation, multicurrency support, zakat calculation. Business finance — revenue tracking, expense categorization, financial reporting.
-
-**Contract:** Personal and business tools are isolated in the same service but behind separate DB roles. assistant cannot call business finance tools. cfo cannot call personal finance tools. This isolation is enforced at the `tools.include` list level and at the DB role level.
-
-**Key capability boundary:** `finance-service` contains internal precision helpers for sub-unit currency handling. Calculations that agents need to invoke explicitly (amortization, zakat arithmetic, compound interest) are exposed through `math-service`.
-
-> Concrete tool definitions, tunables: [SPECS](docs/specs/).
-
----
-
-## personal-service
-
-**Port:** 8103  
-**DB role:** `svc_personal`  
-**Consumers:** assistant (all tools)
-
-**Responsibility:** Habits (definitions and daily logs), goals, tasks, and journal entries for the personal domain. assistant is the sole writer. No other agent accesses this service.
-
-**Contract:** Journal entries are written to both the vault (`~/nizam-vault/personal/journal/`) and the DB. The DB copy exists for search; the vault copy is the source of truth.
-
-> Concrete tool definitions: [SPECS](docs/specs/).
+**Untrusted input.** This service is the system's main ingress for content
+nobody controls. Every fetch is address-filtered, size-capped and timed out;
+every resolved path is containment-checked; external tools are invoked without
+a shell *(C-15, C-16, C-17, C-18)*. Fetch limits `[PENDING — SRS Q4]`.
 
 ---
 
-## investment-service
+## `personal`
 
-**Port:** 8104  
-**DB role:** none — read-only IBKR API wrapper, no persistent state  
-**Consumers:** investor (all tools)
+**Owns** tasks, habits, goals and the journal. Ayah is the sole caller — no
+other agent reaches this domain, and journal content is reachable by no other
+agent at all *(C-10)*.
 
-**Responsibility:** Wraps the Interactive Brokers (IBKR) Client Portal API. Exposes read-only tools for investor: current positions, watchlist, price data, and financial statement data. No writes to IBKR in current scope — investor advises, owner executes.
+**Capabilities** — create and transition a task; record a habit completion and
+report its streak; hold goals; write a journal entry.
 
-**Screening results:** Not stored in PostgreSQL. investor writes structured screening notes to vault via `knowledge-service`. IBKR is the source of truth for portfolio and watchlist data.
+**Contract**
 
-**Future scope:** Order placement (with approval gate), portfolio rebalancing suggestions, portfolio manager expansion. Not in current scope.
+- A task's terminal states are **complete** and **abandoned**, and they are
+  distinct *(FR.02.3.1)*.
+- A habit's streak is derived from its logs and schedule at read time, never
+  stored. A stored counter drifts and there is then no way to tell which is
+  right *(FR.05.1.2)*.
+- A repeated completion for the same date does not double-count *(FR.05.1.1)*.
+- **A journal entry is written to the vault and indexed. If either fails, the
+  operation is reported as a failure — never as a partial success**
+  *(FR.05.3.2, C-14)*.
+- The vault file is authoritative; the indexed copy exists for search only.
 
-**Contract:** Stateless from the DB perspective. investment-service is a thin API proxy — it authenticates to IBKR, translates responses to clean MCP tool output, and returns data to investor. No vault writes from this service.
-
-> Concrete tool definitions and IBKR API scope: [SPECS](docs/specs/).
-
----
-
-## crm-service
-
-**Port:** 8105  
-**DB role:** `svc_crm`  
-**Consumers:** coo (all tools), cos (read-only summary tools)
-
-**Responsibility:** Contact management, pipeline tracking, interaction history for the business domain. 
-
-> Concrete tool definitions: [SPECS](docs/specs/).
+`[PENDING — SRS Q10]` Goals and journal may be out of scope for the first
+cycle. The owner named tasks and habits; these two were carried from earlier
+material and are unconfirmed.
 
 ---
 
-## analytics-service
+## `finance`
 
-**Port:** 8106  
-**DB role:** `svc_analytics`  
-**Consumers:** cmo (all tools), cos (read-only)
+**Owns** the owner's money. Ayah is the sole caller.
 
-**Responsibility:** Campaign performance, content metrics, audience data for the business domain. 
+**Capabilities** — record a transaction and a transfer; report spending by
+period and category; report balances and position; hold budgets and report
+against them; compute zakat.
 
-> Concrete tool definitions: [SPECS](docs/specs/).
+**Contract**
+
+- **Every amount is an integer in the currency's smallest sub-unit. No
+  floating-point arithmetic on money, anywhere, ever** *(NFR.05, FR.01.1.3)*.
+- **An unrecognised category is refused, never invented** *(FR.01.1.2)*. The
+  vocabulary is the owner's.
+- **A transfer between the owner's own accounts is not spending** and never
+  appears as such in a report. Cross-currency transfers record sent and
+  received amounts separately, with any fee separate again *(FR.01.1.4)*.
+- **No converted figure is presented without its rate and as-of time**
+  *(FR.01.3.2)*.
+- Category totals reconcile exactly to period totals *(NFR.06)*.
+- Recurring and irregular costs are spread across the months they cover, so an
+  annual charge is twelve monthly impacts rather than one spike *(FR.01.2.3)*.
+- **Zakat is computed at request time and stored nowhere.** The result states
+  the threshold used, its source and its as-of time. A computation whose inputs
+  could not be retrieved **fails rather than substituting a default**
+  *(FR.01.5.1, FR.01.5.2)*.
+
+`[PENDING — SRS Q1]` If zakat is Obligation-class rather than Expectation, the
+correctness bar on this service rises across the board.
 
 ---
 
-## Agent toolset contracts
+## `math`
 
-### Common config (all agents)
+**Owns** exact arithmetic. Stateless: no database, no writes, no memory.
 
-Every profile has:
-- `allow_lazy_installs: false`
-- `redact_secrets: true`
-- `approvals.mode: manual`
-- `DISCORD_ALLOWED_USERS` set to owner's Discord user ID only
-- `discord.allowed_channels` scoped to the agent's own channels
+**Capabilities** — sub-unit-safe arithmetic, currency conversion, compound
+interest, amortisation, zakat arithmetic.
 
-### Nazim (system admin)
+**Contract**
 
-- Terminal: enabled, scoped via `command_allowlist` + `/etc/sudoers.d/admin-nizam`
-- Cron: `cron_mode: manual`
-- MCP: none
-- Sudo: scoped to select commands only — not full sudo
+- Deterministic and stateless. The same inputs always produce the same output.
+- Holds no data and reaches no schema.
 
-### Noor (knowledge curator)
+**Why it exists as a callable capability rather than as reasoning.** An agent
+doing arithmetic inside its own reasoning will eventually get it wrong in a way
+nothing detects, because there is no artefact to check. Making arithmetic a
+call means every financial figure has a derivation that can be verified and
+repeated *(NFR.05)*.
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `knowledge-service` — all tools
+---
 
-### Ayah (personal assistant)
+## `investment`
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `finance-service` (personal tools only), `personal-service` (all tools), `knowledge-service` (read-only), `math-service` (all tools)
+**Owns** reads from the brokerage. Rashid is the sole caller. Stateless.
 
-### Hakim (researcher)
+**Capabilities** — current positions, watchlist, price data, filing data.
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `knowledge-service` (read + write)
-- File toolset: enabled — intermediate working files (gathered sources, notes, partial synthesis) written to disk during a research task, not held in context. Deleted on task completion; final curated output goes to vault via `knowledge-service`. Prevents context window exhaustion on deep multi-source tasks.
-- Delegation: `max_spawn_depth: 1`, `subagent_auto_approve: false`, `max_concurrent_children: 5`
-- Receives research requests from business agents via cos (kanban) and from owner directly.
-- **Researcher owns:** web research, annual report reading, multi-source synthesis. Investor delegates raw research to researcher and consumes the output.
+**Contract**
 
-### Rashid (investor)
+- **No capability to place, modify or cancel an order exists.** Not disabled,
+  not approval-gated: absent from the service entirely *(FR.07.1.2, T-28)*.
+- **The brokerage is the sole record of holdings. No copy is stored**, so no
+  stored figure can diverge from the truth *(FR.07.1.3, T-29)*.
+- Every figure carries its source and as-of date *(FR.07.3.2)*.
+- **A required input that cannot be retrieved yields an explicit inconclusive
+  result, never an assumed one** *(FR.07.3.3)*.
+- Brokerage credentials are held here and are never in an agent's reach
+  *(C-23)*.
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `investment-service` (all tools), `knowledge-service` (read + write), `math-service` (all tools)
-- Delegation: `max_spawn_depth: 1`, `subagent_auto_approve: false`, `max_concurrent_children: 3`
-- **Investor owns:** IBKR data reads, Shariah compliance screening (industry filter, debt ratio, interest income ratio, receivables ratio), purification calculation, real return vs inflation analysis, investment decision synthesis.
+Screening output is qualitative and is written to the vault through
+`knowledge`, not stored as rows here *(FR.07.4.1)*.
 
-### Raha (chief of staff)
+---
 
-- Terminal: disabled
-- Cron: `cron_mode: manual`
-- MCP: none — coordinates via kanban delegation to C-suite agents
-- No direct data access: cannot read or write any database directly
-- Cross-domain escalation: when a task spans two C-suite domains and requires a decision, it synthesizes the context and notifies the owner. C-suite agents do not resolve cross-domain conflicts autonomously.
+## Agent capability sets
 
-### Hala (CFO)
+Each agent's declared set. Anything absent is invisible to that agent, not
+merely refused *(C-02)*.
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `finance-service` (business tools only), `math-service` (all tools)
-- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
+| Agent | Services | Host access | Delegation | Scheduling |
+| :--- | :--- | :--- | :--- | :--- |
+| **Nazim** | none | **Enabled** — allowlisted invocations, scoped privilege | No | Permitted, mandate requires it |
+| **Noor** | `knowledge` (full) | No | No | Denied |
+| **Ayah** | `personal` (full), `finance` (full), `math` (full), `knowledge` (read) | No | No | Permitted, mandate requires it |
+| **Hakim** | `knowledge` (read + write) | No | **Yes** — bounded | Denied |
+| **Rashid** | `investment` (full), `math` (full), `knowledge` (read + write) | No | **Yes** — bounded | Denied |
 
-### Omar (COO)
+Delegation and scheduling bounds: `[PENDING]`.
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `crm-service` (all tools), `finance-service` (2 read-only tools)
-- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
+**Applied to every agent without exception:** approval required on every state
+change; no runtime capability acquisition; instruction accepted only from the
+owner's identity; secret redaction on; channels scoped to the agent's own.
+Full checklist: `docs/SECURITY.md` §6.
 
-### Reem (CTO)
+**Nazim holds host access and no service access.** It is the only agent that
+can execute on the machine and the only one that reaches no data — the
+separation is deliberate. The highest-privilege agent should have nothing to
+exfiltrate, and the data-holding agents should have no way to execute.
 
-- Terminal: enabled, `command_allowlist` for read-only diagnostics only — no restarts, no installs
-- Cron: `cron_mode: deny`
-- MCP: `knowledge-service` (read-only), `crm-service` (read-only), GitHub MCP (read + write)
-- Delegation: `max_spawn_depth: 2`, `subagent_auto_approve: false`, `max_concurrent_children: 2`
-- Technical research stays with cto via sandbox delegation. Non-technical research delegated to researcher via cos.
-- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
+---
 
-### Mira (CMO)
+## The external-agent boundary
 
-- Terminal: disabled
-- Cron: `cron_mode: deny`
-- MCP: `analytics-service` (all tools), `knowledge-service` (read-only), `crm-service` (read-only)
-- Research: delegated to researcher via cos — cmo carries no web search tools
-- Kanban: can create tasks for peer C-suite agents; cos has oversight. Cross-domain decisions escalate to owner.
+**Not built.** Described here because the containment model has to exist before
+the interface opens, not after.
+
+The system will expose an interface by which an agent built outside it can be
+delegated a task and return a result, **without any existing agent being
+modified to accommodate it** *(FR.06.4.1, NFR.20)*.
+
+**Contract, non-negotiable**
+
+- An external agent is bound by **the same approval gate** as an internal one.
+  Interoperation widens who may participate; it never widens what may happen
+  unapproved *(FR.06.4.2, NFR.21)*.
+- Its capability set is declared and scoped exactly as an internal agent's is.
+- Its identity is verified before any task is accepted *(C-24)*.
+- Its identity is recorded on every action it takes or contributes to
+  *(FR.06.4.3, C-13)*.
+- **A result it returns is untrusted content** — equivalent to fetched web
+  content. It may not become action except through the approval gate, and may
+  not be interpolated into a command or a query *(C-19, T-40)*.
+- Delegation depth and concurrency are bounded across the system boundary as
+  within it *(FR.06.4.4)*.
+
+Opening this interface creates a new trust boundary and requires the threat
+model to be re-run. Pre-conditions: `docs/SECURITY.md` §6.
+
+---
+
+## Adding a service
+
+The full checklist is `docs/SECURITY.md` §6. In summary: loopback only; its own
+database role granted minimally; insert-only on the change record; no hardcoded
+secret; every query parameterised; every path containment-checked; every fetch
+filtered and bounded; every write attributed; and an adversarial test for each
+control it implements.
+
+---
+
+## Open items
+
+| # | Item | Affects |
+| :--- | :--- | :--- |
+| 1 | Behaviour when inference is unavailable. `[PENDING — SRS Q2]` | **Every service contract.** Whether a capability degrades or fails is unresolved and must be settled before specs are written. |
+| 2 | Fetch size cap and timeout. `[PENDING — SRS Q4]` | `knowledge` |
+| 3 | Delegation depth and concurrency bounds. `[PENDING]` | Hakim, Rashid, external agents |
+| 4 | Whether goals and journal are in the first cycle. `[PENDING — SRS Q10]` | `personal` |
+| 5 | Whether zakat is Obligation-class. `[PENDING — SRS Q1]` | `finance`, `math` |

@@ -1,188 +1,235 @@
+---
+title: Security — nizam-os (Personal Domain)
+status: DRAFT
+version: 0.2.0
+date: 2026-09-10
+scope: personal
+derived_from: docs/THREAT-MODEL.md, docs/SRS.md §7
+---
+
 # Security
 
-Security model across all layers. When adding a new agent or service, every section here applies — new components must fit the model, not bypass it.
+Controls, data classification and accepted risks for the personal domain. The
+threats these controls answer are in `docs/THREAT-MODEL.md`; this document is
+the control register and the record of what was deliberately not controlled.
+
+> **Placeholders.** A `[PENDING — SRS Q<n>]` marker means the control is
+> designed but a value it needs is unresolved in `docs/SRS.md`. Nothing marked
+> that way has been assumed.
 
 ---
 
-## Threat model
+## 1. Posture
 
-| Threat | Source | Primary control |
-|--------|--------|-----------------|
-| External attacker on VPS | Internet | UFW + fail2ban + SSH key-only + Tailscale |
-| Agent doing too much | Rogue LLM output | Tool scoping, command_allowlist, sudoers, DB role isolation |
-| Prompt injection | Discord messages, web content, ingested PDFs, vault content | Manual approvals + DISCORD_ALLOWED_USERS + redact_secrets |
-| Secret leakage | Agent tool output, git commits | redact_secrets + age encryption + gitignore |
-| Cross-agent data access | Agent reading another agent's domain | DB role grants, MCP tool include lists |
-| Silent package install | Agent running pip at runtime | allow_lazy_installs: false on all profiles |
-| Rogue cron creation | Agent scheduling arbitrary jobs | cron_mode: deny on most profiles |
-| Spend abuse | Agent making excessive LLM calls | LiteLLM virtual keys + spend tracking |
-| Delegation chain overreach | Sub-agent spawning further sub-agents | depth and concurrent per-agent basis |
-| Supply chain | npm / pip packages at runtime | uv lockfile + allow_lazy_installs: false |
+This system authenticates no users, is reachable from no public network, and
+serves exactly one person. It holds no third party's data and is bound by no
+compliance framework. There is no external adversary with both motive and
+reach.
 
----
+**What it does hold is a complete picture of one person's finances and his
+private journal, and it grants autonomous software the ability to act on his
+behalf.** Security effort is therefore spent almost entirely on bounding what
+the system may do on its own — not on defending a perimeter that nothing is
+trying to cross.
 
-## Trust boundaries
+The ordering that follows from this, and that governs every trade-off below:
 
-**Owner → agents:** The owner communicates through Discord. `DISCORD_ALLOWED_USERS` restricts which Discord user IDs can interact with each agent. Only the owner's ID is listed.
+**Containment > correctness of the record > confidentiality > availability.**
 
-**Agent → tools:** Mutating tool calls (writes, updates, deletes, terminal commands that change state) surface to the owner in Discord before executing via `approvals.mode: manual`. Read-only tool calls do not require approval.
-
-**Agent → MCP services:** Each agent's `config.yaml` specifies exactly which MCP tools it can call. Tools not in `tools.include` are invisible to the agent.
-
-**Service → database:** Each service connects as its own PostgreSQL role. Roles hold grants only on the schemas they need. DB-layer isolation — not convention.
-
-**LiteLLM as the single LLM chokepoint:** No agent connects directly to any external model API. All inference routes through `localhost:4000`. Spend tracking, caching, and key rotation are centralized here.
+Availability is last deliberately. Nothing here carries an
+Obligation-class penalty *(SRS §2)*; a day of downtime costs the owner
+convenience. A wrong action taken on his behalf, or a corrupted financial
+history, costs him something he cannot get back.
 
 ---
 
-## VPS hardening
+## 2. Data classification
 
-**Firewall:** UFW — allow inbound SSH (22), HTTP/HTTPS (80/443 for Let's Encrypt if needed). Default deny inbound. Tailscale subnet allowed.
+| Category | Contents | Class | Retention |
+| :--- | :--- | :--- | :--- |
+| Financial records | Accounts, balances, transactions, counterparties, categories, budgets | **Confidential** | `[PENDING — SRS Q5]` |
+| Journal entries | Reflective writing | **Confidential** — the most sensitive content held | `[PENDING — SRS Q5]` |
+| Personal tracking | Tasks, habits, goals | Internal | `[PENDING — SRS Q5]` |
+| Knowledge notes | Captured content and provenance | Internal — largely public material | Indefinite |
+| Operational records | Change log, health metrics, spend | Internal — reveals behaviour patterns | `[PENDING — SRS Q5]` |
+| Credentials | Provider keys, tokens, database roles, brokerage credential | **Restricted** | Until rotated |
 
-**SSH:** Key-only authentication. Password auth disabled. Tailscale IP is the intended management path.
-
-**fail2ban:** Default SSH jail. Bans after repeated failed login attempts.
-
-**unattended-upgrades:** Auto-applies Ubuntu security updates. Does not auto-restart services.
-
----
-
-## Network boundaries
-
-All internal services bind to `127.0.0.1` only. No service is publicly reachable except SSH.
-
-| Layer | Binding |
-|-------|---------|
-| PostgreSQL | 127.0.0.1:5432 |
-| Redis | 127.0.0.1:6379 |
-| LiteLLM proxy | 127.0.0.1:4000 |
-| All MCP services | 127.0.0.1:PORT |
-| Prometheus | 127.0.0.1:9090 |
-| Loki | 127.0.0.1:3100 |
-| Grafana | 127.0.0.1:3000 (access via Tailscale) |
+**Not held, and worth stating:** no payment card data, no health or biometric
+data, no government identifiers, no third party's personal data, no children's
+data. No regulated category applies. No jurisdiction imposes a residency
+requirement, because the owner is the only data subject.
 
 ---
 
-## Secrets
+## 3. Controls
 
-**At rest:** All secrets stored in `secrets/nizam-os.env`, encrypted with age. The age private key (`secrets/nizam-age-key.txt`) must be backed up externally — it decrypts everything. Plaintext secrets are never committed to git.
+Each control answers named threats. The full derivation is in
+`docs/THREAT-MODEL.md`.
 
-**In transit:** Agent → LiteLLM → OpenRouter over HTTPS. Agent → MCP services over HTTP on localhost (loopback only — TLS not needed). Grafana → PostgreSQL via local socket.
+### 3.1 Autonomy containment — the primary control set
 
-**In agent output:** `redact_secrets: true` on all profiles — Hermes scrubs known secret patterns from tool output before returning to the agent. Best-effort filter, not a guarantee.
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-01 | Every state-changing action is presented to the owner and executes only on explicit approval. Reads execute freely. | T-07, T-23, AC.01 |
+| C-02 | Each agent holds a declared capability set. Capabilities outside it are not merely refused but invisible to the agent. | T-05, AC.03 |
+| C-03 | No component may install software or acquire capability while running. | T-10, AC.04 |
+| C-04 | Delegation is bounded in depth and concurrency, and a sub-agent's actions remain subject to the approval gate. | T-11, T-41 |
+| C-05 | Recurring scheduled work is denied by default, permitted only where a mandate requires it. | T-34, AC.09 |
+| C-06 | Host command execution is restricted to one agent, bounded by an allowlist matching whole invocations, with privilege scoped to named operations. | T-32, T-33 |
 
----
+### 3.2 Isolation
 
-## Database roles
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-07 | Each service connects as its own database role, granted only on the schemas it owns. Isolation is enforced by the database, not by application logic. | T-06, T-14 |
+| C-08 | Agents hold no database credentials. All state access is through a capability service. | T-06 |
+| C-09 | Every value crossing into a query is bound as a parameter. No query is assembled by string composition. | T-13 |
+| C-10 | Journal content is reachable only by the assistant. No other agent holds a capability for it. | T-18 |
 
-| Role | Grants | Cannot access |
-|------|--------|--------------|
-| `svc_litellm` | Owns `litellm` schema | Everything else |
-| `svc_knowledge` | RW `knowledge.*`, INSERT `audit.log` | Everything else |
-| `svc_finance_personal` | RW `finance_personal.*`, INSERT `audit.log` | Everything else |
-| `svc_personal` | RW `personal.*`, INSERT `audit.log` | Everything else |
-| `svc_finance_business` | RW `finance_business.*`, INSERT `audit.log` | Everything else |
-| `svc_crm` | RW `crm.*`, INSERT `audit.log` | Everything else |
-| `svc_analytics` | RW `analytics.*`, INSERT `audit.log` | Everything else |
-| `grafana` | SELECT on all schemas | Any write |
+### 3.3 Integrity of the record
 
-**Audit invariant:** No service role holds UPDATE or DELETE on `audit.log`. Insert-only by grant.
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-11 | Every change is recorded with its acting agent, before and after state, and timestamp. | T-09 |
+| C-12 | No service role holds UPDATE or DELETE on the change record. Append-only by grant. | T-12, AC.07 |
+| C-13 | An action contributed by an external agent is recorded with that agent's identity. | T-39 |
+| C-14 | A write that half-succeeds is reported as a failure, never as a partial success. | T-17 |
 
----
+### 3.4 Untrusted input
 
-## Agent autonomy controls
+Content the system fetches, and output the model produces, are both untrusted.
+So is any result returned by an external agent.
 
-Applied to all profiles without exception. Any new profile must include all of these.
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-15 | Every resolved file path must be contained within its intended root. Anything else is refused. | T-16 |
+| C-16 | Outbound fetches reject non-public schemes and private address ranges, revalidated after every redirect. | T-24 |
+| C-17 | Fetches carry a response size cap and a request timeout. Values `[PENDING]` — depend on NFR.01/02, themselves `[PENDING — SRS Q4]`. | T-25 |
+| C-18 | External tools are invoked with an argument vector, never through a shell, with identifiers validated against an expected form first. | T-26 |
+| C-19 | A result returned by an external agent is treated as untrusted content: it may not become action except through the approval gate, and may not be interpolated into a command or query. | T-40 |
 
-| Control | Rule |
-|---------|------|
-| `allow_lazy_installs: false` | No runtime pip install — any agent can pull arbitrary code otherwise |
-| `approvals.mode: manual` | Mutating tool calls (writes, updates, deletes, state-changing terminal commands) require Discord approval. Reads do not. |
-| `cron_mode: deny` | No persistent scheduled jobs without explicit setup approval |
-| `redact_secrets: true` | Hermes scrubs secret patterns from tool output |
-| `DISCORD_ALLOWED_USERS` | Only the owner's Discord user ID can interact with any agent |
-| `discord.allowed_channels` | Each agent sees only its own channels |
-| Compression model pinned | Cheap and fast model; prevents cost bleed |
-| `memory.memory_enabled: false`, `memory.user_profile_enabled: false`, `memory.write_approval: true` | Auto-memory disabled on all profiles; enabled per-profile once savework/checkpoint mechanism is operational |
-| `memory` + `skills` in `disabled_toolsets` | Memory and skills toolsets not loaded by default; enabled explicitly per profile |
+### 3.5 Identity and secrets
 
-### Terminal restrictions
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-20 | Instruction is accepted only from the owner's own identity. Every other sender is ignored. | T-01, AC.08 |
+| C-21 | Secrets are encrypted at rest and never committed in plaintext. | AC.05 |
+| C-22 | Known secret patterns are redacted from tool output before an agent sees them. Best-effort, explicitly not a guarantee. | T-20, AC.05 |
+| C-23 | Provider and brokerage credentials are held by the service that uses them and are never in an agent's reach. | T-22, T-30 |
+| C-24 | An external agent's identity is verified before any task is accepted, and it is bound by the same approval gate and capability scoping as an internal one. | T-37, T-38 |
 
-| Agent | Terminal | Restriction |
-|-------|----------|-------------|
-| Admin | Enabled | `command_allowlist` + `/etc/sudoers.d/admin-nizam` (service restart only — not full sudo) |
-| CTO | Enabled | `command_allowlist` — read-only diagnostics only, no restarts, no installs |
-| All others | Disabled | `terminal` toolset not loaded |
+### 3.6 Perimeter
 
----
+Cheap, already in place, and not where the risk is.
 
-## Prompt injection
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-25 | Every component binds to loopback. Nothing is publicly reachable. | — |
+| C-26 | Management access is over a private network path, key-based, with password authentication disabled and repeated-failure banning in place. | — |
+| C-27 | Operating system security updates are applied automatically, without automatic service restarts. | — |
 
-**Untrusted input surfaces:** Discord messages, web search results, PDF content, image descriptions from vision model, YouTube transcripts, bank statement content.
+### 3.7 Spend
 
-**Controls:** `DISCORD_ALLOWED_USERS` limits message senders. `approvals.mode: manual` means every mutating tool call surfaces to the owner — injection cannot write, delete, or execute without human confirmation. `redact_secrets: true` reduces exfiltration value. Minimal tool surface per agent limits blast radius.
-
-**Residual risk:** A sufficiently convincing injection could trick the owner into approving a malicious action. The owner sees the tool call but must recognize it as malicious. No automated content inspection is in place.
-
----
-
-## Delegation security
-
-Delegation is opt-in per profile. Most agents have no delegation toolset — it is explicitly enabled only where the mandate requires spawning subagents.
-
-- `subagent_auto_approve: false` on all profiles with delegation — subagent tool calls still require Discord approval.
-- `max_spawn_depth` and `max_concurrent_children` are set per profile; values live in each profile's `config.yaml`. See [SERVICES](docs/SERVICES.md) for per-agent values.
-- Subagents never post to Discord directly. The parent agent synthesizes and posts.
-- Delegation depth and concurrency limits are enforced by Hermes — a subagent cannot exceed the depth budget set by its parent's profile.
-
----
-
-## Sandbox
-
-CTO's delegated subagents run inside a firejail sandbox. Firejail restricts each subagent process to a contained environment.
-
-- **Filesystem:** read-only outside the designated workspace directory. No writes to system paths or other agent directories.
-- **Network:** outbound limited to `127.0.0.1` only — LiteLLM and MCP services. No direct internet access.
-- **Process visibility:** restricted `/proc` view — subagent cannot see or signal processes outside its namespace.
-
-**Why:** CTO's subagents execute code as part of technical research and diagnosis workflows. Firejail contains a misbehaving subagent to its task scope — it cannot affect the host, other agents, or the database even if its tool calls are malicious.
-
-**Integration:** Hermes spawns sandboxed subagents via `sandbox.firejail: true` in CTO's profile. `subagent_auto_approve: false` ensures all subagent tool calls still surface to the owner before executing.
+| # | Control | Answers |
+| :--- | :--- | :--- |
+| C-28 | All inference passes through a single proxy where a ceiling is enforced. Ceiling figure `[PENDING — SRS Q3]`. | T-11, AC.06 |
+| C-29 | Consumption is recorded per agent, so a runaway is attributable. | T-11 |
 
 ---
 
-## Supply chain
+## 4. Accepted risks
 
-**Python:** All dependencies declared in `pyproject.toml` per service and pinned in `uv.lock`. `allow_lazy_installs: false` prevents runtime installation.
+Each of these is a decision, with a reason. The owner is the accepting party
+for all of them, being the only party.
 
-**Node/npx:** GitHub MCP server (`@modelcontextprotocol/server-github`) is pulled from npm at Hermes session start. This is a trust surface — a compromised npm package could execute arbitrary code. Mitigation: pin a specific version when cto is built.
+| # | Risk | Why accepted | Revisit when |
+| :--- | :--- | :--- | :--- |
+| **R-01** | **The owner approves a harmful action because the request looked plausible.** No automated inspection of a proposed action exists — the owner's judgment is the last control. *(T-08, AC.02)* | Automated inspection of model-proposed actions is not solved in general, and a wrong filter would either block legitimate work or give false confidence. Legible approval requests are the mitigation. | This is **the largest residual risk in the system.** Revisit if the owner ever approves something he regrets — the guardrail metric in `docs/PRD.md` §5 tracks exactly this. |
+| **R-02** | **Confidential data is transmitted to a third-party model provider.** Any financial figure or journal entry an agent reasons over leaves the machine. *(T-19)* | Inherent to hosted inference. The alternative — local inference — costs capability the system depends on. | If local inference becomes good enough for the journal domain specifically. Worth its own decision record before the assistant is built. |
+| **R-03** | The chat platform holds the full history of the owner's conversations, including financial figures and journal content. *(T-03)* | Inherent to using a hosted surface. Self-hosting the surface is deferred. | If the surface is ever self-hosted. |
+| **R-04** | A compromise of the owner's platform account is indistinguishable from the owner. *(T-02)* | That account is the root of trust for the entire system. Mitigation is account hygiene, outside this system. | If the platform offers stronger binding than account possession. |
+| **R-05** | Loss of the surface, or of the inference path, removes all interaction. *(T-04, T-21)* | No external party is harmed by an outage. Availability is the last priority by design. | Never, unless an Obligation-class problem appears. |
+| **R-06** | A fetch reveals the owner's interests to an arbitrary third-party server. *(T-27)* | Inherent to fetching a URL he asked for. | Never. |
+| **R-07** | Secret redaction is a best-effort pattern filter and will not catch an unrecognised secret format. *(T-20)* | A complete filter is not achievable. Defence is that secrets are held by services, not agents (C-23). | If a secret is ever observed in output. |
 
-**Hermes:** Treated as a trusted third-party binary. Never manually patched. Updated only via its official update mechanism.
+**Eliminated rather than mitigated** — worth recording, since eliminated risks
+tend to be re-introduced by someone who does not know they were deliberate:
 
-**tirith (Hermes built-in security):** Enabled on all profiles. `tirith_fail_open: true` — a tirith timeout allows the request through. Accepted risk at current scale.
+- **No capability to place, modify or cancel a brokerage order exists anywhere
+  in the system.** Not disabled, not approval-gated: absent. *(T-28)*
+- **No independent copy of brokerage positions is stored**, so no stored figure
+  can diverge from the record. *(T-29)*
 
 ---
 
-## Checklist — adding a new agent
+## 5. Verification
 
-- [ ] `allow_lazy_installs: false`
-- [ ] `redact_secrets: true`
-- [ ] `approvals.mode: manual`
-- [ ] `cron_mode: deny` (or `manual` if cron is part of the mandate)
-- [ ] `discord.allowed_channels` set to the agent's specific channel IDs
-- [ ] `DISCORD_ALLOWED_USERS` set to owner's Discord user ID
-- [ ] Compression model pinned
-- [ ] `tools.include` specified — no unrestricted MCP access
-- [ ] `terminal` disabled unless mandate requires it; if enabled, `command_allowlist` set
-- [ ] Dedicated DB role created with minimum required grants
-- [ ] Delegation toolset disabled for all except selected agents with appropriate depth and concurrent workers
+A control with no test that tries to defeat it is unverified. Each control
+below needs a test that supplies the hostile input and asserts refusal — not a
+test that confirms the happy path.
 
-## Checklist — adding a new service
+| Control | Adversarial test |
+| :--- | :--- |
+| C-15 path containment | A path escaping its root is refused. |
+| C-16 fetch filtering | Loopback, private-range, and redirect-to-private targets are all refused. |
+| C-06 command allowlist | An invocation composing or extending an allowlisted command is refused. |
+| C-02 capability scoping | An agent invoking a capability outside its set fails, and cannot see it. |
+| C-07 schema isolation | A service reaching another domain's schema is refused by the database. |
+| C-12 audit immutability | An attempt to update or delete a change record is refused by grant. |
+| C-20 sender identity | A message from any other identity produces no action. |
+| C-01 approval gate | A state change without a recorded approval does not execute. |
+| C-09 query parameterisation | A value containing query syntax is stored as data, not interpreted. |
+| C-24 external agent scoping | An external agent's unapproved action does not execute. |
 
-- [ ] Binds to `127.0.0.1` only — never `0.0.0.0`
-- [ ] Dedicated PostgreSQL role — no shared roles
-- [ ] Role grants verified: only the schemas/tables the service needs
-- [ ] INSERT-only on `audit.log` — no UPDATE or DELETE
-- [ ] No secrets hardcoded — all via environment variables from `nizam-os.env`
-- [ ] Service added to [SERVICES](docs/SERVICES.md) and [SCHEMAS](docs/SCHEMAS.md)
-- [ ] systemd unit reads secrets from `secrets/nizam-os.env`
+Test layout and tiers: `docs/TESTING.md`.
+
+---
+
+## 6. Checklists
+
+### Adding an agent
+
+- [ ] Capability set declared explicitly. No unrestricted access. *(C-02)*
+- [ ] Approval gate on. *(C-01)*
+- [ ] Runtime capability acquisition disabled. *(C-03)*
+- [ ] Instruction restricted to the owner's identity; channels scoped. *(C-20)*
+- [ ] Scheduling denied unless the mandate requires it. *(C-05)*
+- [ ] Host access disabled unless the mandate requires it; if enabled, allowlisted. *(C-06)*
+- [ ] Delegation disabled unless required; if enabled, depth and concurrency bounded. *(C-04)*
+- [ ] Secret redaction on. *(C-22)*
+- [ ] A dedicated database role if the agent's service needs one, granted minimally. *(C-07)*
+
+### Adding a service
+
+- [ ] Binds to loopback only. *(C-25)*
+- [ ] Its own database role, granted only on schemas it owns. *(C-07)*
+- [ ] Insert-only on the change record. No update, no delete. *(C-12)*
+- [ ] No hardcoded secret. *(C-21)*
+- [ ] Every query parameterised. *(C-09)*
+- [ ] Every path input containment-checked. *(C-15)*
+- [ ] Every outbound fetch address-filtered, size-capped and timed out. *(C-16, C-17)*
+- [ ] Every write recorded with its actor. *(C-11)*
+- [ ] Adversarial tests written for each control it implements. *(§5)*
+
+### Opening the external-agent interface
+
+Not yet built. Before it is:
+
+- [ ] External identity verified before a task is accepted. *(C-24)*
+- [ ] Approval gate applies identically to external agents. *(C-24)*
+- [ ] External identity recorded on every contributed action. *(C-13)*
+- [ ] Returned results treated as untrusted content. *(C-19)*
+- [ ] Delegation bounded across the system boundary. *(C-04)*
+- [ ] Threat model re-run — this opens a new trust boundary. *(TB-11)*
+
+---
+
+## 7. Open items
+
+| # | Item | Blocks |
+| :--- | :--- | :--- |
+| 1 | Retention periods for every category. `[PENDING — SRS Q5]` | Bounds the exposure in R-02 and R-03. Currently undefined. |
+| 2 | Inference spend ceiling. `[PENDING — SRS Q3]` | C-28 is designed but unenforced without a figure. |
+| 3 | Fetch size cap and timeout values. `[PENDING — SRS Q4]` | C-17. |
+| 4 | Boundary of safe unattended recovery. `[PENDING — SRS Q6]` | C-06's allowlist cannot be finalised. |
+| 5 | Behaviour when inference is unavailable. `[PENDING — SRS Q2]` | Changes every service contract. |

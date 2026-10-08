@@ -1,110 +1,205 @@
+---
+title: Schemas — nizam-os (Personal Domain)
+status: DRAFT
+version: 0.2.0
+date: 2026-09-10
+scope: personal
+derived_from: docs/ARCHITECTURE.md, docs/SRS.md
+---
+
 # Schemas
 
-Single PostgreSQL instance. Database: `nizam`. Each service connects as its own role with grants scoped to exactly the schemas it needs. 
+Core entities, their relationships, and the invariants that hold. **Not DDL,
+not migrations, not indexes** — those are specification tier and live in
+`docs/specs/`.
 
-This document records core entities, their relationships, and the invariants that hold. Not DDL, not migration scripts, not indexes. Those are spec tier: [SPECS](docs/specs/).
+One PostgreSQL instance, one database, one schema per domain. Each service
+connects as its own role with grants on exactly the schemas it owns. Role
+grants and the isolation model: `docs/SECURITY.md` §3.2.
 
-> Role grants and isolation model: [SECURITY](docs/SECURITY.md).
-
----
-
-## Schema ownership
-
-| Schema | Owned by | Service |
-|--------|----------|---------|
-| `audit` | Shared | All services write; no service deletes |
-| `litellm` | LiteLLM internal | LiteLLM proxy (Prisma-managed) |
-| `knowledge` | curator's domain | `knowledge-service` |
-| `personal` | assistant's domain | `personal-service` |
-| `finance_personal` | assistant's financial domain | `finance-service` |
-| `finance_business` | cfo's domain | `finance-service` |
-| `crm` | coo's domain | `crm-service` |
-| `analytics` | cmo's domain | `analytics-service` |
+> **Placeholders.** `[PENDING — SRS Q<n>]` marks an entity or attribute whose
+> shape depends on an unresolved question in `docs/SRS.md`. Nothing marked that
+> way has been assumed.
 
 ---
 
-## `audit` schema
+## Ownership
 
-**Invariant:** Append-only. No service role holds UPDATE or DELETE on `audit.log`. Every mutation by any service is recorded here.
+| Schema | Owned by | Written by | Read by |
+| :--- | :--- | :--- | :--- |
+| `audit` | Shared | Every service, insert-only | The owner, via dashboards |
+| `knowledge` | knowledge service | knowledge | knowledge |
+| `personal` | personal service | personal | personal |
+| `finance_personal` | finance service | finance | finance |
 
-**Core entity:** 
+The business schemas (`finance_business`, `crm`, `analytics`) are deferred with
+the business domain and are not described here.
 
-- **audit.log** — tracks which schema, which table, which operation (INSERT/UPDATE/DELETE), which actor, the affected row, before and after state, and when. `actor` is the Hermes profile name. Every write is attributed to the agent that made it. Grafana role has SELECT-only access for dashboards.
-
----
-
-## `knowledge` schema
-
-**Core entities:**
-
-- **vault_index** — one row per note in `~/nizam-vault/commons/`. Tracks the note's file path, title, areas (multi-value controlled vocabulary), source type and URL, tags (free-form), status lifecycle, confidence level, and content hash.
-- **vault_embeddings** — one row per indexed note. Stores the embedding vector alongside the model and dimension used to generate it. Separate table because embedding generation is async and expensive — a note can be indexed before its embedding is computed.
-
-**Key invariants:**
-- `areas` is a controlled vocabulary enforced at write time by knowledge-service. Values are defined in the service config, not in a DB table. Adding a new area requires a service config change.
-- `tags` is free-form — no enforcement. Used for supplementary metadata.
-- `date_created` is the original content's publication date. Separate from the DB record timestamps.
-- A note can belong to multiple areas. Overlap is by design.
-- Embedding dimensions must match the configured embedding model. Changing the model requires a migration.
+`investment` has **no schema** by design. The brokerage is the sole record of
+holdings; storing a copy would create a figure that can diverge from the truth
+*(FR.07.1.3, T-29)*. Qualitative screening output is a vault note, not a row.
 
 ---
 
-## `personal` schema
+## `audit`
 
-**Core entities:**
+**Purpose.** The record of everything the system did to the owner's data. Its
+reader is the owner; its writers are every service.
 
-- **habits** — a recurring behavior the owner tracks. Has a name, frequency (rrule string), optional rest days that don't break streaks, and active/inactive status.
-- **habit_logs** — one row per day a habit was completed. Links to the habit; stores the date and an optional note.
-- **goals** — a desired outcome with an optional target date and a status lifecycle.
-- **tasks** — a discrete unit of work. Has priority, energy level, due date, status, and optional link to a goal.
-- **journal** — one row per journal entry. Stores the vault file path and mirrors content in the DB for search. Vault file is the source of truth; DB copy is for BM25 search only.
+**Core entity**
 
-**Key invariants:**
-- `habit_logs` are append-only in practice — retroactive edits are not expected.
-- Journal entries are written to both vault and DB atomically. A DB write without the vault file is an inconsistent state.
-- Tasks may optionally link to a goal; standalone tasks are valid.
+- **log** — one row per mutation. Records which schema and table were touched,
+  which operation, the acting agent, the affected row, its state before and
+  after, and when. The actor is the agent, not the service — attribution is to
+  the party that decided, not the party that executed *(FR.06.3.1)*.
+  An action contributed by an external agent records that agent's identity
+  *(FR.06.4.3, C-13)*.
 
----
+**Invariants**
 
-## `finance_personal` schema
-
-**Core entities:**
-
-- **accounts** — a financial account the owner holds. Has a name, currency, and type.
-- **transactions** — one row per logged transaction. Has amount (in sub-units), currency, account, category, merchant, date, direction, and optional exchange rate if multicurrency.
-- **transfers** — a movement of value between two accounts the owner holds. Records the original and received amounts separately (to handle FX conversions). Fee is recorded separately; fee currency defaults to the source account's currency.
-- **categories** — a controlled vocabulary for transaction classification. Defined by the owner; enforced at write time.
-- **budgets** — a budget allocation per category per calendar month. Only one active budget per category at a time. When a new budget is created for a category that already has an active one, finance-service deactivates the old row before inserting. Logic lives in the service, not as a DB constraint.
-- **savings_funds** — a goal-based savings target. Has a name, currency, optinal target amount, and optional deadline.
-- **savings_modules** — sub-buckets within a fund. Each module has its own target amount and purpose. Contributions are logged at the module level and roll up to the fund.
-- **savings_contributions** — one row per contribution to a savings module. Links to the source transaction and the target module.
-- **amortization** — recurring or irregular costs amortized for cash flow reporting. Covers subscriptions, annual fees, and any cost that should be spread across months for accurate monthly cash flow. Stores the full amount, period (annual/monthly/etc.), and the effective monthly impact finance-service uses in reports.
-
-**Key invariants:**
-- `finance_personal` is entirely separate from `finance_business` — separate role, separate entities, separate connection, separate migration. A compromise of one does not expose the other.
-- **All monetary amounts are stored in the currency's smallest sub-unit as an integer** (e.g. 50 AED → 5000 fils; 10 USD → 1000 cents). The mapping of currency → sub-unit divisor is defined in `finance-service/config.yaml`. Reporting converts back to major units for display. This eliminates floating-point rounding in all arithmetic.
-- **Zakat has no persistent tables.** `calculate_zakat` is a runtime calculation: `finance-service` fetches the current gold price, computes the nisab threshold from zakatable account balances, and returns the obligation. Nisab gold gram threshold is configurable via `NISAB_GOLD_GRAMS` tunable param (default: 85g).
+- **Append-only, by grant.** No service role holds UPDATE or DELETE. The system
+  cannot rewrite its own history even when instructed to *(FR.06.3.2, C-12)*.
+- Every write to every other schema produces exactly one row here. A mutation
+  with no audit row is a defect, not an omission.
+- Retention: `[PENDING — SRS Q5]`.
 
 ---
 
-## `finance_business` schema
+## `knowledge`
 
-**Core entities:** revenue, expenses, invoices, accounts, and reporting periods.
+**Purpose.** The index over the owner's vault. **The vault files are
+authoritative; everything here is derived and rebuildable from them alone**
+*(NFR.07, NFR.08)*.
 
-Invariants and entity detail: [SPECS](docs/specs).
+**Core entities**
+
+- **vault_index** — one row per note. Holds the note's path, title, subject
+  areas, tags, source type and origin, status, and a content hash. The hash is
+  what makes rebuild detectable: a file whose hash differs from its row is
+  stale.
+- **vault_embeddings** — one row per indexed note, holding the vector alongside
+  the model and dimension that produced it. Separate from the index because
+  embedding is asynchronous and expensive: a note is indexed and searchable by
+  word before its vector exists.
+
+**Invariants**
+
+- **Subject areas are a controlled vocabulary; tags are free-form**
+  *(FR.03.2.2)*. Areas are multi-valued — a note may legitimately belong to
+  several, and forcing a single taxonomy loses that.
+- The model and dimension are stored **per row**, not assumed globally. Without
+  this, changing the embedding model silently mixes incomparable vectors in one
+  index.
+- A note is retrievable by word-based search whether or not its embedding
+  exists. This is what lets retrieval degrade rather than fail *(FR.03.3.3)*.
+- No row exists for a note the owner did not approve *(FR.03.4.1)*.
+- Deleting every row here loses no knowledge. Deleting a vault file does.
 
 ---
 
-## `crm` schema
+## `personal`
 
-**Core entities:** contacts, companies, pipeline stages, interactions, and deals.
+**Purpose.** Tasks, habits, goals and the journal index. The assistant is the
+sole writer.
 
-Invariants and entity detail: [SPECS](docs/specs).
+**Core entities**
+
+- **tasks** — a discrete commitment. Carries a description, optional due date,
+  priority, and a state across open, complete and abandoned *(FR.02.3.1)*.
+  Optionally related to a goal; a standalone task is equally valid.
+- **habits** — a recurring behaviour, with a schedule and the days that do not
+  break a streak when missed.
+- **habit_logs** — one row per completion, on a date, optionally annotated.
+- **goals** — a desired outcome with an optional target date and a lifecycle
+  state.
+- **journal** — one row per entry, holding the vault path and a copy of the
+  content **for search only**.
+
+**Invariants**
+
+- **Complete and abandoned are distinct terminal states.** Collapsing them
+  loses the distinction between what was done and what was dropped, which is
+  most of what a review of the record is for.
+- A habit's streak is derived from its logs and its schedule, never stored as a
+  counter. A stored counter drifts from the log and there is then no way to
+  tell which is right.
+- **The journal's vault file is authoritative; this row is a search copy.** A
+  row without its file is an inconsistent state and must be reported as a
+  failure, not a success *(FR.05.3.2, C-14)*.
+- Journal content is reachable by no agent other than the assistant *(C-10)*.
+- Retention: `[PENDING — SRS Q5]`.
 
 ---
 
-## `analytics` schema
+## `finance_personal`
 
-**Core entities:** campaigns, content items, metrics snapshots, and audience segments.
+**Purpose.** The owner's money: what he holds, what moved, what he intended to
+spend, and what he owes.
 
-Invariants and entity detail: [SPECS](docs/specs).
+**Core entities**
+
+- **accounts** — a place value is held. Name, currency, type.
+- **transactions** — one row per movement. Amount, currency, account, category,
+  counterparty, date, direction, and an exchange rate where one applied.
+- **transfers** — a movement between two accounts the owner holds. Records the
+  amount sent and the amount received **separately**, because a cross-currency
+  transfer is not one number, and any fee separately again *(FR.01.1.4)*.
+- **categories** — the owner's own classification vocabulary, enforced at write
+  time. An unrecognised category is refused, never invented *(FR.01.1.2)*.
+- **budgets** — an intended ceiling per category per month.
+- **savings_funds** — a goal-directed savings target with an optional amount
+  and deadline.
+- **savings_modules** — sub-buckets within a fund, each with its own target.
+  Contributions are recorded at module level and roll up.
+- **savings_contributions** — one row per contribution, linking the source
+  transaction to the target module.
+- **amortisation** — a recurring or irregular cost and the monthly figure it
+  contributes to cash flow, so that an annual charge appears as twelve monthly
+  impacts rather than one spike *(FR.01.2.3)*.
+
+**Invariants**
+
+- **Every monetary amount is an integer in the currency's smallest sub-unit.**
+  No floating-point value ever represents money. This is the single most
+  load-bearing invariant in the schema: rounding error in money is silent,
+  compounding, and destroys trust in every figure derived from it
+  *(NFR.05, FR.01.1.3)*.
+- A transfer between the owner's own accounts is **not spending** and must
+  never appear as such in a spending report. This is the most common way a
+  personal finance figure goes wrong.
+- **At most one active budget per category at a time.** Superseding one
+  deactivates the previous.
+- A converted figure is never stored without the rate and the as-of time that
+  produced it *(FR.01.3.2)*.
+- Category totals for a period reconcile exactly to that period's total
+  *(NFR.06)*. Exactly, not approximately — a consequence of integer amounts.
+- **Zakat holds no tables.** It is computed at request time from current
+  holdings against the prevailing threshold, and a computation whose inputs
+  could not be retrieved returns a failure rather than a figure
+  *(FR.01.5.1, FR.01.5.2)*. Storing a zakat figure would create a number that
+  is correct only at the instant it was written.
+- Retention: `[PENDING — SRS Q5]`.
+
+---
+
+## Cross-cutting
+
+- **Time** is stored in UTC throughout. A date the owner stated and a timestamp
+  the system recorded are different things and are kept distinct — a
+  transaction's date is not its insertion time.
+- **The content's own date** and the record's timestamps are separate. A note
+  published in 2019 and captured today has both.
+- **Migrations are forward-only and numbered.** No down migrations: a rollback
+  that silently discards rows is worse than a forward fix.
+- **Nothing is hard-deleted where the audit record refers to it.** The record
+  must remain interpretable.
+
+---
+
+## Open items
+
+| # | Item | Affects |
+| :--- | :--- | :--- |
+| 1 | Retention per category. `[PENDING — SRS Q5]` | `audit`, `personal.journal`, `finance_personal`, operational records |
+| 2 | Whether goals and journal belong in the first cycle at all. `[PENDING — SRS Q10]` | `personal.goals`, `personal.journal` — both may be out of scope |
+| 3 | Whether zakat is Obligation-class. `[PENDING — SRS Q1]` | Raises the correctness bar on every amount in `finance_personal` |
