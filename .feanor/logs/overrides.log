@@ -1,0 +1,4 @@
+
+=== 2026-09-10T19:32:57.601166+00:00 — preconditions /specs ===
+reason: Docs-first greenfield-by-decision run (see docs/reqs/raw.md D-001/D-002). Charter+HLD tier complete; specs are being authored as the contract the later standardize pass will restructure code against. Code restructure is Phase 5 of docs/ROADMAP.md, deliberately after specs.
+  bypassed: brownfield project without a standardized:true marker — run /standardize first

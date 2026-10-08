@@ -1,0 +1,156 @@
+{
+  "version": "1.0.0",
+  "project": "nizam-os / knowledge-service",
+  "type": "refactor",
+  "source": "standardize",
+  "tickets": [
+    {
+      "id": "TICK-001",
+      "title": "Create app/config.py with env-var-backed constants",
+      "description": "Create services/knowledge-service/app/config.py per python/project-layout.md. Declare LITELLM_BASE_URL, LITELLM_MODEL, LITELLM_MAX_CHARS, and LITELLM_EMBEDDING_DIMS as UPPER_SNAKE_CASE constants read from env vars or with explicit defaults. LITELLM_MASTER_KEY is already read via os.environ['LITELLM_MASTER_KEY'] in embedder.py — leave that as-is (it's a secret, not a tunable constant) but add a startup fail-fast check here. All hardcoded magic values currently scattered across modules consolidate here.",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "LITELLM_BASE_URL defaults to 'http://localhost:4000/embeddings' but is overridable via env var",
+        "LITELLM_MASTER_KEY absence raises at import time with a clear message — not at first call site",
+        "All constants are UPPER_SNAKE_CASE and typed (str, int)",
+        "No other module has a hardcoded 'localhost:4000' or model string after this ticket"
+      ],
+      "target_files": [
+        "services/knowledge-service/app/__init__.py",
+        "services/knowledge-service/app/config.py"
+      ],
+      "convention_tags": ["python", "project-layout"],
+      "verification_command": "cd services/knowledge-service && uv run python -c 'from app.config import LITELLM_BASE_URL; print(LITELLM_BASE_URL)'",
+      "completed": false,
+      "depends_on": []
+    },
+    {
+      "id": "TICK-002",
+      "title": "Create AppError exception hierarchy in app/exceptions.py",
+      "description": "Create services/knowledge-service/app/exceptions.py with a base AppError(Exception) class and typed subtypes: EmbeddingError (raised when LiteLLM proxy call fails), IndexError (raised when DB upsert fails), SearchError (raised when vector/BM25 query fails), IngestionError (raised when URL fetch or transcript fetch fails). Each subtype has a short docstring explaining why it exists. Do not catch bare Exception except at MCP tool boundary.",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "AppError subclasses Exception; all subtypes subclass AppError",
+        "Each subtype has a one-line docstring",
+        "No bare except: or except Exception: in any module except the MCP tool wrappers in server.py"
+      ],
+      "target_files": [
+        "services/knowledge-service/app/exceptions.py"
+      ],
+      "convention_tags": ["python", "error-handling"],
+      "verification_command": "cd services/knowledge-service && uv run python -c 'from app.exceptions import AppError, EmbeddingError, SearchError, IngestionError'",
+      "completed": false,
+      "depends_on": [
+        { "id": "TICK-001", "reason": "app/ package must exist before adding modules to it" }
+      ]
+    },
+    {
+      "id": "TICK-003",
+      "title": "Restructure flat modules into app/ package + main.py entry point",
+      "description": "Move all flat .py files (vault_io.py, indexer.py, embedder.py, search.py, ingestion.py, transcript.py, server.py) into services/knowledge-service/app/. Rename: vault_io.py → app/io.py, server.py → app/tools.py (MCP tool definitions). Create main.py at service root as the sole entry point — it imports FastMCP from app/tools.py and calls mcp.run(). Update all internal imports to use 'from app.<module> import ...' form. The pyproject.toml [tool.hatch.build.targets.wheel] packages line must change from ['.'] to ['app'] or appropriate. The Dockerfile (if added later) will reference main.py.",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "No .py files remain at services/knowledge-service/ root except main.py",
+        "main.py contains only the mcp instance import and mcp.run() call",
+        "All internal cross-module imports use 'from app.<module> import ...' form",
+        "uv run python main.py starts the server without ImportError"
+      ],
+      "target_files": [
+        "services/knowledge-service/main.py",
+        "services/knowledge-service/app/__init__.py",
+        "services/knowledge-service/app/io.py",
+        "services/knowledge-service/app/indexer.py",
+        "services/knowledge-service/app/embedder.py",
+        "services/knowledge-service/app/search.py",
+        "services/knowledge-service/app/ingestion.py",
+        "services/knowledge-service/app/transcript.py",
+        "services/knowledge-service/app/tools.py",
+        "services/knowledge-service/pyproject.toml"
+      ],
+      "convention_tags": ["abstractions", "tdd", "python-boundaries", "python", "project-layout"],
+      "verification_command": "cd services/knowledge-service && uv run python -c 'from app.tools import mcp; print(mcp.name)'",
+      "completed": false,
+      "depends_on": [
+        { "id": "TICK-001", "reason": "app/ package must exist; embedder.py will import from app.config" },
+        { "id": "TICK-002", "reason": "app/exceptions.py will be imported by restructured modules" }
+      ]
+    },
+    {
+      "id": "TICK-004",
+      "title": "Extract inline SQL to app/queries/*.sql files",
+      "description": "Per python/project-layout.md: 'Any domain package that touches the DB gets its own queries/*.sql files — SQL lives in .sql files, never inlined as Python strings.' Extract all multi-line SQL strings from app/indexer.py (upsert_note), app/search.py (BM25 and vector queries), app/tools.py (list_notes SELECT), and app/embedder.py (SELECT content_hash, INSERT/UPDATE vault_embeddings) into named .sql files under app/queries/. Load them at module level via Path(__file__).parent / 'queries' / 'filename.sql' read_text().",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "No multi-line SQL string literals remain in any .py file",
+        "All .sql files are under app/queries/",
+        "SQL files are loaded via pathlib at module level, not via open() inline",
+        "uv run python -c 'from app.indexer import upsert_note' runs without error"
+      ],
+      "target_files": [
+        "services/knowledge-service/app/queries/upsert_note.sql",
+        "services/knowledge-service/app/queries/upsert_embedding.sql",
+        "services/knowledge-service/app/queries/get_embedding_hash.sql",
+        "services/knowledge-service/app/queries/list_notes.sql",
+        "services/knowledge-service/app/queries/bm25_search.sql",
+        "services/knowledge-service/app/queries/vector_search.sql",
+        "services/knowledge-service/app/indexer.py",
+        "services/knowledge-service/app/embedder.py",
+        "services/knowledge-service/app/search.py",
+        "services/knowledge-service/app/tools.py"
+      ],
+      "convention_tags": ["abstractions", "tdd", "python-boundaries", "python", "project-layout", "database"],
+      "verification_command": "cd services/knowledge-service && python -c 'from pathlib import Path; missing = [f for f in [\"upsert_note\",\"upsert_embedding\",\"get_embedding_hash\",\"list_notes\",\"bm25_search\",\"vector_search\"] if not (Path(\"app/queries\")/f\"{f}.sql\").exists()]; assert not missing, missing'",
+      "completed": false,
+      "depends_on": [
+        { "id": "TICK-003", "reason": "modules must be in app/ before their SQL is extracted to app/queries/" }
+      ]
+    },
+    {
+      "id": "TICK-005",
+      "title": "Wrap external call boundaries with AppError; fix untyped params: list",
+      "description": "Per python/error-handling.md: never let an uncaught external exception propagate silently. (1) Wrap app/embedder._embed() httpx.post() in try/except httpx.HTTPStatusError and httpx.RequestError — raise EmbeddingError with message. (2) Wrap app/tools.list_notes() DB query in try/except and return {\"error\": ...} dict on failure (consistent with get_note pattern already in place). (3) Fix app/tools.py list_notes params: list → params: list[Any] (import Any from typing). (4) embedder.upsert_embedding — the outer function already has a try via the context manager; ensure EmbeddingError from _embed() propagates up correctly and is caught at the MCP tool level in app/tools.py add_note/update_note.",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "app/embedder._embed() raises EmbeddingError on any httpx failure — no bare exception propagates",
+        "app/tools.list_notes() returns {'error': str} dict on DB failure — does not raise",
+        "params type annotation is params: list[Any]",
+        "add_note and update_note MCP tools catch EmbeddingError and return {'error': str} dict"
+      ],
+      "target_files": [
+        "services/knowledge-service/app/embedder.py",
+        "services/knowledge-service/app/tools.py"
+      ],
+      "convention_tags": ["abstractions", "tdd", "python-boundaries", "python", "error-handling", "typing"],
+      "verification_command": "cd services/knowledge-service && uv run python -c 'from app.embedder import _embed' && uv run mypy app/embedder.py app/tools.py --ignore-missing-imports",
+      "completed": false,
+      "depends_on": [
+        { "id": "TICK-003", "reason": "modules must be in app/ first" },
+        { "id": "TICK-002", "reason": "EmbeddingError must exist in app/exceptions.py" }
+      ]
+    },
+    {
+      "id": "TICK-006",
+      "title": "Bootstrap tests/ with conftest.py and initial test suite",
+      "description": "Per python/testing.md: tests/ mirrors app/ structure. Create: (1) tests/conftest.py — inserts service root onto sys.path and provides a pytest fixture mocking the httpx client for embedder tests. (2) tests/test_embedder.py — covers: _embed() success (mock httpx → returns float list), _embed() raises EmbeddingError on 4xx, upsert_embedding() returns False when content_hash unchanged. (3) tests/test_tools.py — covers: list_notes returns count+notes keys, get_note returns error dict on FileNotFoundError. Mark any test requiring a real DB connection with @pytest.mark.slow.",
+      "spec_ref": null,
+      "acceptance_criteria": [
+        "uv run pytest tests/ -m 'not slow' exits 0",
+        "test_embedder.py covers success, 4xx error, hash-unchanged skip",
+        "test_tools.py covers list_notes structure and get_note file-not-found",
+        "No test uses unittest.mock.patch on internal domain classes"
+      ],
+      "target_files": [
+        "services/knowledge-service/tests/__init__.py",
+        "services/knowledge-service/tests/conftest.py",
+        "services/knowledge-service/tests/test_embedder.py",
+        "services/knowledge-service/tests/test_tools.py"
+      ],
+      "convention_tags": ["abstractions", "tdd", "python-boundaries", "python", "testing"],
+      "verification_command": "cd services/knowledge-service && uv run pytest tests/ -m 'not slow' -v",
+      "completed": false,
+      "depends_on": [
+        { "id": "TICK-005", "reason": "EmbeddingError must exist for error-path tests; embedder must be in app/ for import" }
+      ]
+    }
+  ]
+}

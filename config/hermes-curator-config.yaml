@@ -1,0 +1,115 @@
+model:
+  default: deepseek/deepseek-v4-flash
+  provider: custom
+  base_url: http://localhost:4000
+  api_mode: chat_completions
+  api_key: ${LITELLM_VIRTUAL_KEY_CURATOR}
+agent:
+  disabled_toolsets:
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - context_engine
+    - cronjob
+    - delegation
+    - discord
+    - discord_admin
+    - feishu_doc
+    - feishu_drive
+    - homeassistant
+    - image_gen
+    - kanban
+    - project
+    - search
+    - session_search
+    - skills
+    - spotify
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+    - yuanbao
+compression:
+  enabled: true
+  threshold: 0.6
+  target_ratio: 0.3
+  protect_last_n: 10
+  hygiene_hard_message_limit: 5000
+  protect_first_n: 3
+  abort_on_summary_failure: true
+  in_place: false
+prompt_caching:
+  cache_ttl: 5m
+display:
+  tool_progress: all
+stt:
+  enabled: false
+context:
+  engine: compressor
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  write_approval: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+goals:
+  max_turns: 20
+discord:
+  require_mention: false
+  allowed_channels:
+    - 1517682482328371242
+  auto_thread: true
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+approvals:
+  mode: manual
+  cron_mode: deny
+security:
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: true
+  allow_lazy_installs: false
+onboarding:
+  seen:
+    profile_build_offered: true
+_config_version: 33
+custom_providers:
+  - name: Local (localhost:4000)
+    base_url: http://localhost:4000
+    model: deepseek/deepseek-v4-flash
+    api_mode: chat_completions
+platform_toolsets:
+  cli:
+    - file
+    - memory
+smart_model_routing:
+  enabled: false
+session_reset:
+  mode: none
+known_plugin_toolsets:
+  cli:
+    - spotify
+mcp_servers:
+  knowledge-service:
+    command: /home/vazir/.local/bin/uv
+    args:
+      - run
+      - --directory
+      - /home/vazir/nizam-os
+      - python
+      - services/knowledge-service/server.py
+    enabled: true
+    env:
+      POSTGRES_DSN: "${POSTGRES_DSN_KNOWLEDGE}"
+      REDIS_URL: "${REDIS_URL}"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      VAULT_ROOT: /home/vazir/nizam-vault
+      SUPADATA_API_KEY: "${SUPADATA_API_KEY}"
